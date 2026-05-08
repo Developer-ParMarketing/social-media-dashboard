@@ -13,6 +13,19 @@ export default function AccountsPage() {
             setAccounts(res.data);
         });
     }, []);
+    // useEffect(() => {
+    //     const token = 'EAANKDV86S6gBRRc1c1zjb7ackeHpbkYWxaX5LVyyCFOzHyC5IbZAdUlgqI7fKrmZAdsH0QiJ0TVNdNKm0bZBWulqZAhF5N9W5vjLlYZATw5MW1QXcrsja7mHrfxFpOOhLN9RTpwmll0nh8jYHugsB0YbH87KXbBEbAlAzVlQdPW8057S0sPCvDOZAwlpDI'; // or wherever you store it
+
+    //     API.get("/facebook/accounts", {
+    //         params: {
+    //             access_token: token
+    //         }
+    //     }).then((res) => {
+    //         setAccounts(res.data);
+    //     }).catch(err => {
+    //         console.error(err.response?.data || err.message);
+    //     });
+    // }, []);
 
     const handleClick = (id, token) => {
         router.push(`/accounts/${id}?token=${token}`);

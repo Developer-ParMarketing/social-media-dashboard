@@ -1,118 +1,970 @@
+// const fbClient = require("../utils/fbClient");
+// const generateProof = require("../utils/generateProof");
+
+// // 🔒 Move these to ENV in production
+// const ACCESS_TOKEN =
+//     "EAANKDV86S6gBRRc1c1zjb7ackeHpbkYWxaX5LVyyCFOzHyC5IbZAdUlgqI7fKrmZAdsH0QiJ0TVNdNKm0bZBWulqZAhF5N9W5vjLlYZATw5MW1QXcrsja7mHrfxFpOOhLN9RTpwmll0nh8jYHugsB0YbH87KXbBEbAlAzVlQdPW8057S0sPCvDOZAwlpDI";
+
+// const APP_SECRET_PROOF =
+//     "6c55244b1d22a51fe9be91f325c7cab378c74cc490305f2a8a0f8d11da8652d9";
+
+
+// function calculateScore({ likes = 0, comments = 0, shares = 0, views = 0, saves = 0, watchTimeMs = 0, reelDurationMs = 0 }) {
+//     let base = likes * 4 + comments * 6 + shares * 8 + views * 0.5 + saves * 5;
+
+//     if (reelDurationMs > 0 && watchTimeMs > 0) {
+//         const completionRate = Math.min(watchTimeMs / reelDurationMs, 1);
+//         base += completionRate * 20;
+//     }
+//     return Math.round(base);
+// }
+
+
+// function getBest(arr) {
+//     return arr.length ? [...arr].sort((a, b) => b.score - a.score)[0] : null;
+// }
+
+// const parseFbNextUrl = (fullUrl) => {
+//     try {
+//         const parsed = new URL(fullUrl);
+//         return {
+
+//             path: parsed.pathname,
+//             params: Object.fromEntries(parsed.searchParams.entries()),
+//         };
+//     } catch {
+//         return null;
+//     }
+// };
+
+// const fetchAllPages = async (url, params) => {
+//     let results = [];
+//     let currentUrl = url;
+//     let currentParams = { ...params };
+
+//     // Pull auth tokens out so we can re-attach them on every page
+//     const { access_token, appsecret_proof } = params;
+
+//     while (currentUrl) {
+//         try {
+//             const response = await fbClient.get(currentUrl, { params: currentParams });
+//             const data = response.data?.data || [];
+//             results = results.concat(data);
+
+//             const nextUrl = response.data?.paging?.next;
+//             if (nextUrl) {
+//                 const parsed = parseFbNextUrl(nextUrl);
+//                 if (!parsed) break;
+//                 currentUrl = parsed.path;
+//                 // Re-inject auth tokens — the cursor URL from Meta already contains
+//                 // access_token but we override to ensure appsecret_proof is always present
+//                 currentParams = {
+//                     ...parsed.params,
+//                     access_token,
+//                     appsecret_proof,
+//                 };
+//             } else {
+//                 currentUrl = null;
+//             }
+//         } catch (err) {
+//             console.warn(`⚠️ fetchAllPages error on ${currentUrl}:`, err.response?.data?.error?.message || err.message);
+//             break;
+//         }
+//     }
+
+//     return results;
+// };
+
+
+// async function fetchIgReelInsights(itemId, commonParams) {
+//     const result = {
+//         views: 0,
+//         reach: 0,
+//         avgWatchTimeMs: 0,
+//         avgWatchTimeSec: 0,
+//         totalWatchTimeMs: 0,
+//         totalWatchTimeSec: 0,
+//         saves: 0,
+//         shares: 0,
+//         likes: 0,
+//         comments: 0,
+//         skipRate: 0,
+//         skipRatePct: "0%",
+//         crosspostedViews: 0,
+//         facebookViews: 0,
+//     };
+
+//     const reelMetrics = [
+//         "views",
+//         "reach",
+//         "ig_reels_avg_watch_time",
+//         "ig_reels_video_view_total_time",
+//         "likes",
+//         "comments",
+//         "shares",
+//         "saved",
+//         "reels_skip_rate",
+//     ].join(",");
+
+//     try {
+//         const res = await fbClient.get(`/${itemId}/insights`, {
+//             params: { metric: reelMetrics, ...commonParams },
+//         });
+
+//         for (const insight of (res.data.data || [])) {
+//             const val = insight.values?.[0]?.value ?? insight.value ?? 0;
+//             switch (insight.name) {
+//                 case "views": result.views = val; break;
+//                 case "reach": result.reach = val; break;
+//                 case "ig_reels_avg_watch_time":
+//                     result.avgWatchTimeMs = val;
+//                     result.avgWatchTimeSec = Math.round(val / 1000 * 10) / 10;
+//                     break;
+//                 case "ig_reels_video_view_total_time":
+//                     result.totalWatchTimeMs = val;
+//                     result.totalWatchTimeSec = Math.round(val / 1000);
+//                     break;
+//                 case "likes": result.likes = val; break;
+//                 case "comments": result.comments = val; break;
+//                 case "shares": result.shares = val; break;
+//                 case "saved": result.saves = val; break;
+//                 case "reels_skip_rate":
+//                     result.skipRate = val / 100;
+//                     result.skipRatePct = `${Math.round(val)}%`;
+//                     break;
+//             }
+//         }
+
+//         console.log(`  ✅ IG Reel ${itemId} | views:${result.views} avgWatch:${result.avgWatchTimeSec}s skip:${result.skipRatePct}`);
+//     } catch (err) {
+//         console.warn(`  ⚠️ Reel batch metrics failed [${itemId}]: ${err.response?.data?.error?.message || err.message}`);
+
+//         try {
+//             const res = await fbClient.get(`/${itemId}/insights`, {
+//                 params: { metric: "views", ...commonParams },
+//             });
+//             for (const insight of (res.data.data || [])) {
+//                 if (insight.name === "views") result.views = insight.values?.[0]?.value ?? insight.value ?? 0;
+//             }
+//         } catch (_) { }
+//     }
+
+//     // Crosspost metrics — fetch separately, ignore errors silently
+//     try {
+//         const cpRes = await fbClient.get(`/${itemId}/insights`, {
+//             params: { metric: "crossposted_views,facebook_views", ...commonParams },
+//         });
+//         for (const insight of (cpRes.data.data || [])) {
+//             const val = insight.values?.[0]?.value ?? insight.value ?? 0;
+//             if (insight.name === "crossposted_views") result.crosspostedViews = val;
+//             if (insight.name === "facebook_views") result.facebookViews = val;
+//         }
+//     } catch (_) { }
+
+//     return result;
+// }
+
+
+// async function fetchIgPostInsights(itemId, commonParams) {
+//     const result = { reach: 0, saves: 0, follows: 0, profileVisits: 0 };
+
+//     try {
+//         const res = await fbClient.get(`/${itemId}/insights`, {
+//             params: { metric: "reach,saved,follows,profile_visits", ...commonParams },
+//         });
+//         for (const insight of (res.data.data || [])) {
+//             const val = insight.values?.[0]?.value ?? insight.value ?? 0;
+//             switch (insight.name) {
+//                 case "reach": result.reach = val; break;
+//                 case "saved": result.saves = val; break;
+//                 case "follows": result.follows = val; break;
+//                 case "profile_visits": result.profileVisits = val; break;
+//             }
+//         }
+//     } catch (_) { }
+
+//     return result;
+// }
+
+
+// async function fetchFbVideoInsights(videoId, isReel, commonParams) {
+//     const result = {
+//         reach: 0,
+//         shares: 0,
+//         // Reel-specific
+//         avgWatchTimeSec: null,
+//         totalWatchTimeSec: null,
+//         retention3sViews: 0,
+//         minutesViewed: 0,
+//     };
+
+
+//     const baseMetrics = [
+//         "total_video_impressions_unique",
+//         "total_video_shares",
+//         "total_video_avg_time_watched",
+//         "total_video_view_total_time",
+//         "total_video_views_unique",
+//     ];
+
+
+//     const reelMetrics = isReel ? [
+//         "post_video_avg_time_watched",
+//         "post_video_view_time",
+//         "post_video_views_15s",
+//         "fb_reels_total_plays",
+//         "fb_reels_replay_count",
+//     ] : [];
+
+//     const allMetrics = [...baseMetrics, ...(isReel ? reelMetrics : [])].join(",");
+
+//     try {
+//         const res = await fbClient.get(`/${videoId}/video_insights`, {
+//             params: { metric: allMetrics, ...commonParams },
+//         });
+
+//         for (const insight of (res.data.data || [])) {
+//             const val = insight.values?.[0]?.value ?? insight.value ?? 0;
+//             switch (insight.name) {
+//                 case "total_video_impressions_unique":
+//                     result.reach = val; break;
+//                 case "total_video_shares":
+//                     result.shares = val; break;
+//                 case "total_video_avg_time_watched":
+
+//                     result.avgWatchTimeSec = val > 0 ? Math.round(val / 1000 * 10) / 10 : null;
+//                     break;
+//                 case "total_video_view_total_time":
+//                     result.totalWatchTimeSec = val > 0 ? Math.round(val / 1000) : null;
+//                     break;
+//                 case "post_video_views_15s":
+//                     result.retention3sViews = val; break;
+//                 case "fb_reels_total_plays":
+//                     // Use this as primary view count override if > 0
+//                     if (val > 0) result.fbReelsPlays = val;
+//                     break;
+//                 case "fb_reels_replay_count":
+//                     result.fbReelsReplays = val; break;
+//             }
+//         }
+//     } catch (err) {
+
+//         console.warn(`  ⚠️ FB video_insights failed [${videoId}]: ${err.response?.data?.error?.message || err.message}`);
+
+
+//         try {
+//             const fallback = await fbClient.get(`/${videoId}/video_insights`, {
+//                 params: { metric: "total_video_impressions_unique", ...commonParams },
+//             });
+//             result.reach = fallback.data.data?.[0]?.values?.[0]?.value || 0;
+//         } catch (_) { }
+//     }
+
+//     return result;
+// }
+
+
+// exports.getAccounts = async (req, res) => {
+//     try {
+//         const { data } = await fbClient.get("/v17.0/me/accounts", {
+//             params: { access_token: ACCESS_TOKEN, appsecret_proof: APP_SECRET_PROOF },
+//         });
+//         res.json(data.data);
+//     } catch (err) {
+//         console.error("getAccounts Error:", err.response?.data || err.message);
+//         res.status(500).json(err.response?.data || err.message);
+//     }
+// };
+
+// exports.getPageDetails = async (req, res) => {
+//     try {
+//         const { id } = req.params;
+//         const { data } = await fbClient.get(`/v17.0/${id}`, {
+//             params: { fields: "instagram_business_account,name", access_token: ACCESS_TOKEN, appsecret_proof: APP_SECRET_PROOF },
+//         });
+//         res.json(data);
+//     } catch (err) {
+//         console.error("getPageDetails Error:", err.response?.data || err.message);
+//         res.status(500).json(err.response?.data || err.message);
+//     }
+// };
+
+// exports.getInstagramMedia = async (req, res) => {
+//     try {
+//         const { igId } = req.params;
+//         const { data } = await fbClient.get(`/v17.0/${igId}/media`, {
+//             params: {
+//                 fields: "id,caption,media_type,media_url,timestamp,like_count,comments_count",
+//                 limit: 50,
+//                 access_token: ACCESS_TOKEN,
+//                 appsecret_proof: APP_SECRET_PROOF,
+//             },
+//         });
+//         res.json(data);
+//     } catch (err) {
+//         console.error("getInstagramMedia Error:", err.response?.data || err.message);
+//         res.status(500).json(err.response?.data || err.message);
+//     }
+// };
+
+// exports.getFacebookPosts = async (req, res) => {
+//     try {
+//         const { pageId } = req.params;
+//         const { access_token } = req.query;
+//         if (!access_token) return res.status(400).json({ error: "Page access token required" });
+
+//         const appsecret_proof = generateProof(access_token);
+//         const { data } = await fbClient.get(`/v17.0/${pageId}/posts`, {
+//             params: {
+//                 fields: "id,message,created_time,full_picture,likes.summary(true),comments.summary(true)",
+//                 limit: 25,
+//                 access_token,
+//                 appsecret_proof,
+//             },
+//         });
+//         res.json(data);
+//     } catch (err) {
+//         console.error(err.response?.data || err.message);
+//         res.status(500).json(err.response?.data || err.message);
+//     }
+// };
+
+
+// exports.getAllComments = async (req, res) => {
+//     try {
+//         const { pageId } = req.params;
+//         const { access_token } = req.query;
+
+//         if (!access_token) return res.status(400).json({ error: "Page access token is required." });
+
+//         const appsecret_proof = generateProof(access_token);
+//         const commonParams = { access_token, appsecret_proof };
+
+//         const fbPosts = await fetchAllPages(`/${pageId}/posts`, {
+//             fields: "id,message,created_time,comments.summary(true)",
+//             limit: 50,
+//             ...commonParams,
+//         });
+
+//         console.log(`✅ FB Posts fetched: ${fbPosts.length}`);
+
+//         const pageInfoRes = await fbClient.get(`/${pageId}`, {
+//             params: { fields: "instagram_business_account", ...commonParams },
+//         });
+
+//         const igUserId = pageInfoRes.data?.instagram_business_account?.id;
+
+//         let igMedia = [];
+//         if (igUserId) {
+//             igMedia = await fetchAllPages(`/${igUserId}/media`, {
+//                 fields: "id,caption,media_type,media_url,timestamp,comments_count,like_count",
+//                 limit: 50,
+//                 ...commonParams,
+//             });
+//         }
+
+//         const fbDataPromises = fbPosts.map(async (post) => {
+//             const summaryCount = post.comments?.summary?.total_count ?? null;
+//             if (summaryCount === 0) {
+//                 return { platform: "facebook", postId: post.id, message: post.message || null, createdTime: post.created_time, totalComments: 0, comments: [] };
+//             }
+//             try {
+//                 const comments = await fetchAllPages(`/${post.id}/comments`, {
+//                     fields: "id,message,created_time,from{name,id},like_count",
+//                     filter: "stream",
+//                     limit: 50,
+//                     ...commonParams,
+//                 });
+//                 return { platform: "facebook", postId: post.id, message: post.message || null, createdTime: post.created_time, totalComments: comments.length, comments };
+//             } catch (err) {
+//                 const errMsg = err.response?.data?.error?.message || err.message;
+//                 return { platform: "facebook", postId: post.id, message: post.message || null, createdTime: post.created_time, totalComments: 0, comments: [], error: errMsg };
+//             }
+//         });
+
+//         const igDataPromises = igMedia.map(async (media) => {
+//             if ((media.comments_count ?? 0) === 0) {
+//                 return { platform: "instagram", mediaId: media.id, caption: media.caption || null, mediaType: media.media_type, timestamp: media.timestamp, likeCount: media.like_count || 0, totalComments: 0, comments: [] };
+//             }
+//             try {
+//                 const comments = await fetchAllPages(`/${media.id}/comments`, {
+//                     fields: "id,text,username,timestamp,replies{id,text,username,timestamp}",
+//                     limit: 50,
+//                     ...commonParams,
+//                 });
+//                 return { platform: "instagram", mediaId: media.id, caption: media.caption || null, mediaType: media.media_type, timestamp: media.timestamp, likeCount: media.like_count || 0, totalComments: comments.length, comments };
+//             } catch (err) {
+//                 const errMsg = err.response?.data?.error?.message || err.message;
+//                 return { platform: "instagram", mediaId: media.id, caption: media.caption || null, mediaType: media.media_type, timestamp: media.timestamp, likeCount: media.like_count || 0, totalComments: 0, comments: [], error: errMsg };
+//             }
+//         });
+
+//         const [fbData, igData] = await Promise.all([Promise.all(fbDataPromises), Promise.all(igDataPromises)]);
+//         const allData = [...fbData, ...igData];
+
+//         const totalFBComments = fbData.reduce((sum, p) => sum + p.totalComments, 0);
+//         const totalIGComments = igData.reduce((sum, m) => sum + m.totalComments, 0);
+
+//         return res.status(200).json({
+//             success: true,
+//             summary: {
+//                 facebookPosts: fbPosts.length,
+//                 instagramPosts: igMedia.length,
+//                 totalFacebookComments: totalFBComments,
+//                 totalInstagramComments: totalIGComments,
+//                 totalComments: totalFBComments + totalIGComments,
+//             },
+//             data: allData,
+//         });
+
+//     } catch (err) {
+//         const errMsg = err.response?.data?.error?.message || err.message;
+//         console.error("❌ getAllComments error:", errMsg);
+//         return res.status(500).json({ success: false, error: errMsg });
+//     }
+// };
+
+
+
+// exports.getDashboard = async (req, res) => {
+//     try {
+//         const { pageId } = req.params;
+//         const { access_token, since, until } = req.query;
+
+//         if (!access_token) {
+//             return res.status(400).json({ error: "Page access token required" });
+//         }
+
+//         const appsecret_proof = generateProof(access_token);
+//         const commonParams = { access_token, appsecret_proof };
+
+
+//         const pageRes = await fbClient.get(`/${pageId}`, {
+//             params: {
+//                 fields: "name,fan_count,followers_count,instagram_business_account",
+//                 ...commonParams,
+//             },
+//         });
+
+//         const page = {
+//             name: pageRes.data.name,
+//             followers: pageRes.data.followers_count || pageRes.data.fan_count || 0,
+//         };
+
+//         console.log(`✅ Page: ${page.name} | Followers: ${page.followers}`);
+
+//         // =========================
+//         // 2. INSTAGRAM DATA
+//         // FIX: Do NOT pass since/until to IG media — IG Graph API ignores these
+//         // filters on /media and they can silently truncate results.
+//         // We fetch ALL media and filter by date client-side if needed.
+//         // =========================
+//         let igProfile = null;
+//         let instagramFormatted = [];
+//         const igReelIdSet = new Set();
+
+//         if (pageRes.data.instagram_business_account) {
+//             const igId = pageRes.data.instagram_business_account.id;
+
+//             // FIX: fetch IG media WITHOUT since/until — IG API doesn't support
+//             // time-based cursor pagination on /media; passing them silently drops pages
+//             const [igInfoRes, igAllMedia] = await Promise.all([
+//                 fbClient.get(`/${igId}`, {
+//                     params: { fields: "username,followers_count,media_count", ...commonParams },
+//                 }),
+//                 fetchAllPages(`/${igId}/media`, {
+//                     fields: "id,caption,media_type,media_url,like_count,comments_count,timestamp",
+//                     // FIX: Use limit=33 — Instagram's Graph API hard-caps pages at 33 items.
+//                     // Using 50 causes the API to silently return 33 anyway but may mis-report
+//                     // the cursor, causing subsequent pages to be skipped.
+//                     limit: 33,
+//                     ...commonParams,
+//                     // ⚠️ Do NOT include since/until here — breaks IG pagination
+//                 }),
+//             ]);
+
+//             igProfile = igInfoRes.data;
+//             console.log(`✅ IG Media fetched: ${igAllMedia.length} (profile reports ${igProfile.media_count})`);
+
+//             // Process all IG media — apply date filter here if since/until provided
+//             const filteredIgMedia = igAllMedia.filter((item) => {
+//                 if (!since && !until) return true;
+//                 const ts = new Date(item.timestamp).getTime() / 1000;
+//                 if (since && ts < Number(since)) return false;
+//                 if (until && ts > Number(until)) return false;
+//                 return true;
+//             });
+
+//             console.log(`✅ IG Media after date filter: ${filteredIgMedia.length}`);
+
+//             instagramFormatted = await Promise.all(
+//                 filteredIgMedia.map(async (item) => {
+//                     const isReel = item.media_type === "VIDEO";
+
+//                     if (isReel) igReelIdSet.add(item.id);
+
+//                     if (isReel) {
+//                         const ins = await fetchIgReelInsights(item.id, commonParams);
+
+//                         const approxDurationMs = ins.views > 0
+//                             ? Math.round(ins.totalWatchTimeMs / ins.views)
+//                             : 0;
+//                         const completionRate = (approxDurationMs > 0 && ins.avgWatchTimeMs > 0)
+//                             ? Math.min(ins.avgWatchTimeMs / approxDurationMs, 1)
+//                             : 0;
+
+//                         const score = calculateScore({
+//                             likes: ins.likes || item.like_count || 0,
+//                             comments: ins.comments || item.comments_count || 0,
+//                             shares: ins.shares,
+//                             views: ins.views,
+//                             saves: ins.saves,
+//                             watchTimeMs: ins.avgWatchTimeMs,
+//                             reelDurationMs: approxDurationMs,
+//                         });
+
+//                         return {
+//                             id: item.id,
+//                             message: item.caption || "",
+//                             image: item.media_url || null,
+//                             created_time: item.timestamp,
+//                             type: "reel",
+//                             platform: "instagram",
+//                             likes: ins.likes || item.like_count || 0,
+//                             comments: ins.comments || item.comments_count || 0,
+//                             shares: ins.shares,
+//                             saves: ins.saves,
+//                             views: ins.views,
+//                             reach: ins.reach,
+//                             crosspostedViews: ins.crosspostedViews,
+//                             facebookViews: ins.facebookViews,
+//                             avgWatchTimeSec: ins.avgWatchTimeSec,
+//                             avgWatchTimeMs: ins.avgWatchTimeMs,
+//                             totalWatchTimeSec: ins.totalWatchTimeSec,
+//                             totalWatchTimeMs: ins.totalWatchTimeMs,
+//                             skipRate: ins.skipRate,
+//                             skipRatePct: ins.skipRatePct,
+//                             completionRate: Math.round(completionRate * 100),
+//                             approxDurationSec: Math.round(approxDurationMs / 1000),
+//                             engagement: (ins.likes || item.like_count || 0) + (ins.comments || item.comments_count || 0) + ins.shares + ins.saves,
+//                             score,
+//                         };
+
+//                     } else {
+//                         const ins = await fetchIgPostInsights(item.id, commonParams);
+//                         const likes = item.like_count || 0;
+//                         const comments = item.comments_count || 0;
+//                         const score = calculateScore({ likes, comments, saves: ins.saves });
+
+//                         return {
+//                             id: item.id,
+//                             message: item.caption || "",
+//                             image: item.media_url || null,
+//                             created_time: item.timestamp,
+//                             type: "post",
+//                             platform: "instagram",
+//                             likes,
+//                             comments,
+//                             shares: 0,
+//                             saves: ins.saves,
+//                             follows: ins.follows,
+//                             views: 0,
+//                             reach: ins.reach,
+//                             profileVisits: ins.profileVisits,
+//                             engagement: likes + comments,
+//                             score,
+//                             avgWatchTimeSec: null,
+//                             skipRate: null,
+//                             completionRate: null,
+//                         };
+//                     }
+//                 })
+//             );
+
+//             // Deduplicate IG
+//             const seenIg = new Set();
+//             instagramFormatted = instagramFormatted.filter((item) => {
+//                 if (seenIg.has(item.id)) return false;
+//                 seenIg.add(item.id);
+//                 return true;
+//             });
+
+//             console.log(`✅ IG Reels: ${instagramFormatted.filter(x => x.type === "reel").length} | Posts: ${instagramFormatted.filter(x => x.type === "post").length}`);
+//         }
+
+//         // =========================
+//         // 3. FACEBOOK VIDEOS / REELS
+//         // FIX: fetch reel/video insights using fetchFbVideoInsights helper
+//         // which calls /video_insights with proper FB metrics
+//         // =========================
+//         const allVideos = await fetchAllPages(`/${pageId}/videos`, {
+//             fields: "id,description,created_time,length,views,likes.summary(true),comments.summary(true),source,picture",
+//             limit: 50,
+//             ...(since && { since }),
+//             ...(until && { until }),
+//             ...commonParams,
+//         });
+
+//         console.log(`✅ FB Videos fetched: ${allVideos.length}`);
+
+//         const videoIdSet = new Set(allVideos.map((v) => v.id));
+
+//         const formattedVideos = await Promise.all(
+//             allVideos.map(async (video) => {
+//                 const likes = video.likes?.summary?.total_count || 0;
+//                 const comments = video.comments?.summary?.total_count || 0;
+//                 const views = video.views || 0;
+//                 const isReel = video.length && video.length <= 90;
+
+//                 // FIX: use dedicated FB video insights helper instead of
+//                 // inline Promise.all with sharedposts + video_insights
+//                 const fbIns = await fetchFbVideoInsights(video.id, isReel, commonParams);
+
+//                 // For reels: prefer fbReelsPlays over raw views if available
+//                 const finalViews = (isReel && fbIns.fbReelsPlays > 0) ? fbIns.fbReelsPlays : views;
+
+//                 return {
+//                     id: video.id,
+//                     message: video.description || "",
+//                     image: video.source || video.picture || null,
+//                     created_time: video.created_time,
+//                     type: isReel ? "reel" : "video",
+//                     platform: "facebook",
+//                     likes,
+//                     comments,
+//                     shares: fbIns.shares,
+//                     saves: 0,
+//                     views: finalViews,
+//                     reach: fbIns.reach,
+//                     // Reel-specific watch time fields (null for regular videos if unavailable)
+//                     avgWatchTimeSec: fbIns.avgWatchTimeSec,
+//                     totalWatchTimeSec: fbIns.totalWatchTimeSec,
+//                     // Reel replay count (FB-specific)
+//                     reelsReplays: fbIns.fbReelsReplays || null,
+//                     // 15s retention views
+//                     views15s: isReel ? (fbIns.retention3sViews || 0) : null,
+//                     skipRate: null,   // Not exposed by FB API per-video
+//                     completionRate: null,
+//                     engagement: likes + comments + fbIns.shares + finalViews,
+//                     score: calculateScore({ likes, comments, shares: fbIns.shares, views: finalViews }),
+//                 };
+//             })
+//         );
+
+//         // =========================
+//         // 4. FACEBOOK POSTS
+//         // =========================
+//         const allPosts = await fetchAllPages(`/${pageId}/posts`, {
+//             fields: "id,message,created_time,full_picture,shares,likes.summary(true),comments.summary(true)",
+//             limit: 50,
+//             ...(since && { since }),
+//             ...(until && { until }),
+//             ...commonParams,
+//         });
+
+//         console.log(`✅ FB Posts fetched: ${allPosts.length}`);
+
+//         const formattedPosts = await Promise.all(
+//             allPosts.map(async (post) => {
+//                 if (videoIdSet.has(post.id)) return null;
+//                 if (igReelIdSet.has(post.id)) return null;
+//                 if (!post.message && !post.full_picture) return null;
+
+//                 const pic = post.full_picture || "";
+//                 if (
+//                     pic.includes("instagram.f") ||
+//                     pic.includes("cdninstagram.com") ||
+//                     pic.includes("instagram.com") ||
+//                     pic.includes(".mp4") ||
+//                     pic.includes("video.f") ||
+//                     pic.includes("video-") ||
+//                     /\/v\/[a-zA-Z0-9_-]+\.mp4/.test(pic)
+//                 ) return null;
+
+//                 const postIdBase = post.id.split("_")[1] || post.id;
+//                 const isVideoPost = allVideos.some((v) => {
+//                     const videoIdBase = v.id.split("_")[1] || v.id;
+//                     return videoIdBase === postIdBase;
+//                 });
+//                 if (isVideoPost) return null;
+
+//                 const likes = post.likes?.summary?.total_count || 0;
+//                 const comments = post.comments?.summary?.total_count || 0;
+//                 const shares = post.shares?.count || 0;
+
+//                 let reach = 0;
+//                 try {
+//                     const insights = await fbClient.get(`/${post.id}/insights`, {
+//                         params: { metric: "post_impressions_unique", ...commonParams },
+//                     });
+//                     reach = insights.data.data?.[0]?.values?.[0]?.value ?? insights.data.data?.[0]?.value ?? 0;
+//                 } catch (_) { }
+
+//                 return {
+//                     id: post.id,
+//                     message: post.message || "",
+//                     image: post.full_picture || null,
+//                     created_time: post.created_time,
+//                     type: "post",
+//                     platform: "facebook",
+//                     likes,
+//                     comments,
+//                     shares,
+//                     saves: 0,
+//                     views: 0,
+//                     reach,
+//                     engagement: likes + comments + shares,
+//                     score: calculateScore({ likes, comments, shares }),
+//                     avgWatchTimeSec: null,
+//                     skipRate: null,
+//                     completionRate: null,
+//                 };
+//             })
+//         );
+
+//         const filteredPosts = formattedPosts.filter(Boolean);
+
+//         // =========================
+//         // 5. DEDUPLICATE + COMBINE
+//         // =========================
+//         const fbContentRaw = [...filteredPosts, ...formattedVideos];
+//         const fbContent = [...new Map(fbContentRaw.map((item) => [item.id, item])).values()];
+
+//         const globalSeen = new Set();
+//         const allContent = [...fbContent, ...instagramFormatted].filter((item) => {
+//             // FIX: key must include platform to avoid FB and IG items with same
+//             // numeric ID cancelling each other out during cross-platform dedup
+//             const key = `${item.platform}::${item.id}`;
+//             if (globalSeen.has(key)) return false;
+//             globalSeen.add(key);
+//             return true;
+//         });
+
+//         console.log(`✅ Total content after dedup: ${allContent.length} (FB: ${fbContent.length}, IG: ${instagramFormatted.length})`);
+
+//         // =========================
+//         // 6. BEST CONTENT PICKERS
+//         // =========================
+//         const bestByCategory = {
+//             post: getBest(fbContent.filter((x) => x.type === "post")),
+//             video: getBest(fbContent.filter((x) => x.type === "video")),
+//             reel: getBest(fbContent.filter((x) => x.type === "reel")),
+//         };
+
+//         const bestOverall = getBest(fbContent);
+
+//         const igBest = {
+//             post: getBest(instagramFormatted.filter((x) => x.type === "post")),
+//             reel: getBest(instagramFormatted.filter((x) => x.type === "reel")),
+//             overall: getBest(instagramFormatted),
+//             mostWatched: instagramFormatted
+//                 .filter((x) => x.type === "reel" && x.avgWatchTimeSec > 0)
+//                 .sort((a, b) => b.avgWatchTimeSec - a.avgWatchTimeSec)[0] || null,
+//             bestRetention: instagramFormatted
+//                 .filter((x) => x.type === "reel" && x.views >= 100 && x.skipRate !== null)
+//                 .sort((a, b) => a.skipRate - b.skipRate)[0] || null,
+//         };
+
+//         const globalBest = getBest(allContent);
+
+//         // =========================
+//         // 7. MONTHLY BREAKDOWN
+//         // FIX: Build monthly map from the FULL allContent array (not filtered subsets).
+//         // Previously, since/until was applied to FB but not IG, causing month buckets
+//         // to have mismatched counts. Now all content flows through one loop.
+//         // Also fixed: IG reels were counted as "posts" in the monthly reels counter.
+//         // =========================
+//         const monthlyMap = {};
+
+//         allContent.forEach((item) => {
+//             if (!item.created_time) return;
+//             const d = new Date(item.created_time);
+//             if (isNaN(d.getTime())) return;
+
+//             const month = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+
+//             if (!monthlyMap[month]) {
+//                 monthlyMap[month] = {
+//                     month,
+//                     facebook: {
+//                         posts: 0,
+//                         reels: 0,
+//                         videos: 0,
+//                         likes: 0,
+//                         comments: 0,
+//                         shares: 0,
+//                         views: 0,
+//                         engagement: 0,
+//                         reach: 0,
+//                     },
+//                     instagram: {
+//                         posts: 0,
+//                         reels: 0,
+//                         likes: 0,
+//                         comments: 0,
+//                         shares: 0,
+//                         saves: 0,
+//                         views: 0,
+//                         engagement: 0,
+//                         reach: 0,
+//                         totalWatchTimeSec: 0,
+//                     },
+//                 };
+//             }
+
+//             const plat = monthlyMap[month][item.platform];
+
+//             // FIX: Count each content type separately instead of lumping everything as "posts"
+//             if (item.type === "post") {
+//                 plat.posts += 1;
+//             } else if (item.type === "reel") {
+//                 plat.reels += 1;
+//             } else if (item.type === "video") {
+//                 plat.videos = (plat.videos || 0) + 1;
+//             }
+
+//             plat.likes += item.likes || 0;
+//             plat.comments += item.comments || 0;
+//             plat.shares = (plat.shares || 0) + (item.shares || 0);
+//             plat.saves = (plat.saves || 0) + (item.saves || 0);
+//             plat.views = (plat.views || 0) + (item.views || 0);
+//             plat.engagement += item.engagement || 0;
+//             plat.reach += item.reach || 0;
+
+//             // Track IG reel watch time
+//             if (item.platform === "instagram" && item.totalWatchTimeSec) {
+//                 monthlyMap[month].instagram.totalWatchTimeSec += item.totalWatchTimeSec;
+//             }
+//         });
+
+//         // =========================
+//         // 8. TOTALS SUMMARY
+//         // =========================
+//         const totalLikes = allContent.reduce((s, p) => s + (p.likes || 0), 0);
+//         const totalComments = allContent.reduce((s, p) => s + (p.comments || 0), 0);
+//         const totalShares = allContent.reduce((s, p) => s + (p.shares || 0), 0);
+//         const totalSaves = allContent.reduce((s, p) => s + (p.saves || 0), 0);
+//         const totalViews = allContent.reduce((s, p) => s + (p.views || 0), 0);
+//         const totalEngagement = allContent.reduce((s, p) => s + (p.engagement || 0), 0);
+//         const totalReach = allContent.reduce((s, p) => s + (p.reach || 0), 0);
+
+//         // Reel-specific aggregates (IG only)
+//         const igReels = instagramFormatted.filter((x) => x.type === "reel");
+//         const totalReelWatchTimeSec = igReels.reduce((s, r) => s + (r.totalWatchTimeSec || 0), 0);
+//         const avgReelWatchTimeSec = igReels.length > 0
+//             ? Math.round((igReels.reduce((s, r) => s + (r.avgWatchTimeSec || 0), 0) / igReels.length) * 10) / 10
+//             : 0;
+//         const avgReelSkipRate = igReels.filter(r => r.skipRate > 0).length > 0
+//             ? Math.round(
+//                 igReels.filter(r => r.skipRate > 0).reduce((s, r) => s + r.skipRate, 0)
+//                 / igReels.filter(r => r.skipRate > 0).length * 100
+//             )
+//             : 0;
+
+//         // FB reels aggregates
+//         const fbReels = fbContent.filter((x) => x.type === "reel");
+//         const fbReelsWithWatchTime = fbReels.filter(r => r.avgWatchTimeSec != null);
+//         const fbAvgWatchTimeSec = fbReelsWithWatchTime.length > 0
+//             ? Math.round(
+//                 fbReelsWithWatchTime.reduce((s, r) => s + r.avgWatchTimeSec, 0)
+//                 / fbReelsWithWatchTime.length * 10
+//             ) / 10
+//             : 0;
+
+//         // =========================
+//         // 9. FINAL RESPONSE
+//         // =========================
+//         return res.status(200).json({
+//             success: true,
+//             page,
+
+//             instagram: {
+//                 profile: igProfile || null,
+//                 best: igBest,
+//                 data: instagramFormatted,
+//             },
+
+//             facebook: {
+//                 best: bestByCategory,
+//                 data: fbContent,
+//             },
+
+//             summary: {
+//                 totalContent: allContent.length,
+//                 facebookContent: fbContent.length,
+//                 instagramContent: instagramFormatted.length,
+//                 totalLikes,
+//                 totalComments,
+//                 totalShares,
+//                 totalSaves,
+//                 totalViews,
+//                 totalEngagement,
+//                 totalReach,
+
+
+//                 reels: {
+//                     ig: {
+//                         count: igReels.length,
+//                         totalWatchTimeSec: totalReelWatchTimeSec,
+//                         totalWatchTimeMin: Math.round(totalReelWatchTimeSec / 60),
+//                         avgWatchTimeSec: avgReelWatchTimeSec,
+//                         avgSkipRatePct: `${avgReelSkipRate}%`,
+//                     },
+//                     fb: {
+//                         count: fbReels.length,
+//                         avgWatchTimeSec: fbAvgWatchTimeSec,
+//                     },
+//                 },
+//             },
+
+//             bestOverall,
+//             globalBest,
+//             bestByCategory,
+//             igBest,
+
+
+//             monthly: Object.values(monthlyMap).sort((a, b) => a.month.localeCompare(b.month)),
+//             data: allContent,
+//         });
+
+//     } catch (err) {
+//         console.error("❌ Dashboard Error:", err.response?.data || err.message);
+//         return res.status(500).json({
+//             success: false,
+//             error: err.response?.data?.error?.message || err.message || "Internal server error",
+//         });
+//     }
+// };
+
+
+
 const fbClient = require("../utils/fbClient");
 const generateProof = require("../utils/generateProof");
 
 // 🔒 Move these to ENV in production
 const ACCESS_TOKEN =
-    "EAANKDV86S6gBRMrqeSHAtcjZAt9JRcKhfjituzCt9ZCUoobNZCIgRT4bDqkZCpLZCeks83yJtBSxhZBdmNCza1evrqJGkKkWOnLPckLqG01Q5HcHmGxs8ZCFuyKerZAx1jG9W6tPq4RFQsAbU7tjznq4HpFJg0EckvGQnUcZCO23PdOFaq7BYynKbZCZBSYGgwl";
+    "EAANKDV86S6gBRRc1c1zjb7ackeHpbkYWxaX5LVyyCFOzHyC5IbZAdUlgqI7fKrmZAdsH0QiJ0TVNdNKm0bZBWulqZAhF5N9W5vjLlYZATw5MW1QXcrsja7mHrfxFpOOhLN9RTpwmll0nh8jYHugsB0YbH87KXbBEbAlAzVlQdPW8057S0sPCvDOZAwlpDI";
 
 const APP_SECRET_PROOF =
-    "b4e95a2fbc498da4f06af7f0bcce97f369401e1b87d57d21810867f40f977a77";
+    "6c55244b1d22a51fe9be91f325c7cab378c74cc490305f2a8a0f8d11da8652d9";
 
+// ─────────────────────────────────────────────
+// HELPERS
+// ─────────────────────────────────────────────
 
-
-
-
-
-exports.getAccounts = async (req, res) => {
-    try {
-        const { data } = await fbClient.get("/v17.0/me/accounts", {
-            params: {
-                access_token: ACCESS_TOKEN,
-                appsecret_proof: APP_SECRET_PROOF,
-            },
-        });
-
-        // ✅ SEND FULL DATA (including page access_token)
-        res.json(data.data);
-
-    } catch (err) {
-        console.error("getAccounts Error:", err.response?.data || err.message);
-        res.status(500).json(err.response?.data || err.message);
+function calculateScore({ likes = 0, comments = 0, shares = 0, views = 0, saves = 0, watchTimeMs = 0, reelDurationMs = 0 }) {
+    let base = likes * 4 + comments * 6 + shares * 8 + views * 0.5 + saves * 5;
+    if (reelDurationMs > 0 && watchTimeMs > 0) {
+        const completionRate = Math.min(watchTimeMs / reelDurationMs, 1);
+        base += completionRate * 20;
     }
-};
+    return Math.round(base);
+}
 
+function getBest(arr) {
+    return arr.length ? [...arr].sort((a, b) => b.score - a.score)[0] : null;
+}
 
-// ✅ 2. Get page details (check IG link)
-exports.getPageDetails = async (req, res) => {
-    try {
-        const { id } = req.params;
-
-        const { data } = await fbClient.get(`/v17.0/${id}`, {
-            params: {
-                fields: "instagram_business_account,name",
-                access_token: ACCESS_TOKEN,
-                appsecret_proof: APP_SECRET_PROOF,
-            },
-        });
-
-        res.json(data);
-    } catch (err) {
-        console.error("getPageDetails Error:", err.response?.data || err.message);
-        res.status(500).json(err.response?.data || err.message);
-    }
-};
-
-
-// ✅ 3. Instagram media
-exports.getInstagramMedia = async (req, res) => {
-    try {
-        const { igId } = req.params;
-
-        const { data } = await fbClient.get(`/v17.0/${igId}/media`, {
-            params: {
-                fields:
-                    "id,caption,media_type,media_url,timestamp,like_count,comments_count",
-                limit: 50,
-                access_token: ACCESS_TOKEN,
-                appsecret_proof: APP_SECRET_PROOF,
-            },
-        });
-
-        res.json(data);
-    } catch (err) {
-        console.error("getInstagramMedia Error:", err.response?.data || err.message);
-        res.status(500).json(err.response?.data || err.message);
-    }
-};
-
-
-// ✅ 4. Facebook posts (IMPORTANT FIX)
-exports.getFacebookPosts = async (req, res) => {
-    try {
-        const { pageId } = req.params;
-        const { access_token } = req.query;
-
-        if (!access_token) {
-            return res.status(400).json({
-                error: "Page access token required",
-            });
-        }
-
-
-        const appsecret_proof = generateProof(access_token);
-
-        const { data } = await fbClient.get(`/v17.0/${pageId}/posts`, {
-            params: {
-                fields:
-                    "id,message,created_time,full_picture,likes.summary(true),comments.summary(true)",
-                limit: 25,
-                access_token,
-                appsecret_proof, // ✅ generated here
-            },
-        });
-
-        res.json(data);
-    } catch (err) {
-        console.error(err.response?.data || err.message);
-        res.status(500).json(err.response?.data || err.message);
-    }
-};
-
-// =========================
-// HELPER: PARSE FACEBOOK NEXT URL
-// Extracts path + params from a full paging.next URL
-// to avoid base URL duplication with axios
-// =========================
 const parseFbNextUrl = (fullUrl) => {
     try {
         const parsed = new URL(fullUrl);
@@ -125,62 +977,684 @@ const parseFbNextUrl = (fullUrl) => {
     }
 };
 
-// =========================
-// HELPER: FETCH ALL PAGINATED DATA
-// Handles cursor-based pagination via paging.next
-// Always re-injects access_token + appsecret_proof on every page
-// because Facebook strips them from paging.next URLs
-// =========================
 const fetchAllPages = async (url, params) => {
     let results = [];
     let currentUrl = url;
-    let currentParams = params;
-
+    let currentParams = { ...params };
     const { access_token, appsecret_proof } = params;
 
     while (currentUrl) {
-        const response = await fbClient.get(currentUrl, { params: currentParams });
-        const data = response.data?.data || [];
-        results = results.concat(data);
+        try {
+            const response = await fbClient.get(currentUrl, { params: currentParams });
+            const data = response.data?.data || [];
+            results = results.concat(data);
 
-        const nextUrl = response.data?.paging?.next;
-        if (nextUrl) {
-            const parsed = parseFbNextUrl(nextUrl);
-            if (!parsed) break;
-            currentUrl = parsed.path;
-            currentParams = {
-                ...parsed.params,
-                access_token,    // always re-inject
-                appsecret_proof, // always re-inject
-            };
-        } else {
-            currentUrl = null;
+            const nextUrl = response.data?.paging?.next;
+            if (nextUrl) {
+                const parsed = parseFbNextUrl(nextUrl);
+                if (!parsed) break;
+                currentUrl = parsed.path;
+                currentParams = { ...parsed.params, access_token, appsecret_proof };
+            } else {
+                currentUrl = null;
+            }
+        } catch (err) {
+            console.warn(`⚠️ fetchAllPages error on ${currentUrl}:`, err.response?.data?.error?.message || err.message);
+            break;
         }
     }
 
     return results;
 };
 
-// =========================
-// GET ALL COMMENTS
-// GET /api/:pageId/comments?access_token=PAGE_ACCESS_TOKEN
-// =========================
+async function fetchIgReelInsights(itemId, commonParams) {
+    const result = {
+        views: 0, reach: 0,
+        avgWatchTimeMs: 0, avgWatchTimeSec: 0,
+        totalWatchTimeMs: 0, totalWatchTimeSec: 0,
+        saves: 0, shares: 0, likes: 0, comments: 0,
+        skipRate: 0, skipRatePct: "0%",
+        crosspostedViews: 0, facebookViews: 0,
+    };
+
+    const reelMetrics = [
+        "views", "reach", "ig_reels_avg_watch_time",
+        "ig_reels_video_view_total_time", "likes", "comments",
+        "shares", "saved", "reels_skip_rate",
+    ].join(",");
+
+    try {
+        const res = await fbClient.get(`/${itemId}/insights`, {
+            params: { metric: reelMetrics, ...commonParams },
+        });
+
+        for (const insight of (res.data.data || [])) {
+            const val = insight.values?.[0]?.value ?? insight.value ?? 0;
+            switch (insight.name) {
+                case "views": result.views = val; break;
+                case "reach": result.reach = val; break;
+                case "ig_reels_avg_watch_time":
+                    result.avgWatchTimeMs = val;
+                    result.avgWatchTimeSec = Math.round(val / 1000 * 10) / 10;
+                    break;
+                case "ig_reels_video_view_total_time":
+                    result.totalWatchTimeMs = val;
+                    result.totalWatchTimeSec = Math.round(val / 1000);
+                    break;
+                case "likes": result.likes = val; break;
+                case "comments": result.comments = val; break;
+                case "shares": result.shares = val; break;
+                case "saved": result.saves = val; break;
+                case "reels_skip_rate":
+                    result.skipRate = val / 100;
+                    result.skipRatePct = `${Math.round(val)}%`;
+                    break;
+            }
+        }
+
+        console.log(`  ✅ IG Reel ${itemId} | views:${result.views} avgWatch:${result.avgWatchTimeSec}s skip:${result.skipRatePct}`);
+    } catch (err) {
+        console.warn(`  ⚠️ Reel batch metrics failed [${itemId}]: ${err.response?.data?.error?.message || err.message}`);
+        try {
+            const res = await fbClient.get(`/${itemId}/insights`, {
+                params: { metric: "views", ...commonParams },
+            });
+            for (const insight of (res.data.data || [])) {
+                if (insight.name === "views") result.views = insight.values?.[0]?.value ?? insight.value ?? 0;
+            }
+        } catch (_) { }
+    }
+
+    try {
+        const cpRes = await fbClient.get(`/${itemId}/insights`, {
+            params: { metric: "crossposted_views,facebook_views", ...commonParams },
+        });
+        for (const insight of (cpRes.data.data || [])) {
+            const val = insight.values?.[0]?.value ?? insight.value ?? 0;
+            if (insight.name === "crossposted_views") result.crosspostedViews = val;
+            if (insight.name === "facebook_views") result.facebookViews = val;
+        }
+    } catch (_) { }
+
+    return result;
+}
+
+async function fetchIgPostInsights(itemId, commonParams) {
+    const result = { reach: 0, saves: 0, follows: 0, profileVisits: 0 };
+    try {
+        const res = await fbClient.get(`/${itemId}/insights`, {
+            params: { metric: "reach,saved,follows,profile_visits", ...commonParams },
+        });
+        for (const insight of (res.data.data || [])) {
+            const val = insight.values?.[0]?.value ?? insight.value ?? 0;
+            switch (insight.name) {
+                case "reach": result.reach = val; break;
+                case "saved": result.saves = val; break;
+                case "follows": result.follows = val; break;
+                case "profile_visits": result.profileVisits = val; break;
+            }
+        }
+    } catch (_) { }
+    return result;
+}
+
+async function fetchFbVideoInsights(videoId, isReel, commonParams) {
+    const result = {
+        reach: 0, shares: 0,
+        avgWatchTimeSec: null, totalWatchTimeSec: null,
+        retention3sViews: 0, minutesViewed: 0,
+    };
+
+    const baseMetrics = [
+        "total_video_impressions_unique", "total_video_shares",
+        "total_video_avg_time_watched", "total_video_view_total_time",
+        "total_video_views_unique",
+    ];
+
+    const reelMetrics = isReel ? [
+        "post_video_avg_time_watched", "post_video_view_time",
+        "post_video_views_15s", "fb_reels_total_plays", "fb_reels_replay_count",
+    ] : [];
+
+    const allMetrics = [...baseMetrics, ...(isReel ? reelMetrics : [])].join(",");
+
+    try {
+        const res = await fbClient.get(`/${videoId}/video_insights`, {
+            params: { metric: allMetrics, ...commonParams },
+        });
+
+        for (const insight of (res.data.data || [])) {
+            const val = insight.values?.[0]?.value ?? insight.value ?? 0;
+            switch (insight.name) {
+                case "total_video_impressions_unique": result.reach = val; break;
+                case "total_video_shares": result.shares = val; break;
+                case "total_video_avg_time_watched":
+                    result.avgWatchTimeSec = val > 0 ? Math.round(val / 1000 * 10) / 10 : null;
+                    break;
+                case "total_video_view_total_time":
+                    result.totalWatchTimeSec = val > 0 ? Math.round(val / 1000) : null;
+                    break;
+                case "post_video_views_15s": result.retention3sViews = val; break;
+                case "fb_reels_total_plays":
+                    if (val > 0) result.fbReelsPlays = val;
+                    break;
+                case "fb_reels_replay_count": result.fbReelsReplays = val; break;
+            }
+        }
+    } catch (err) {
+        console.warn(`  ⚠️ FB video_insights failed [${videoId}]: ${err.response?.data?.error?.message || err.message}`);
+        try {
+            const fallback = await fbClient.get(`/${videoId}/video_insights`, {
+                params: { metric: "total_video_impressions_unique", ...commonParams },
+            });
+            result.reach = fallback.data.data?.[0]?.values?.[0]?.value || 0;
+        } catch (_) { }
+    }
+
+    return result;
+}
+
+// ─────────────────────────────────────────────
+// CORE DATA FUNCTION  ← used by getDashboard AND the sync route
+// ─────────────────────────────────────────────
+
+/**
+ * Fetches all dashboard data from the Meta API.
+ * Returns a plain object (no req/res involved).
+ *
+ * @param {string} pageId
+ * @param {string} access_token   - page-level access token
+ * @param {string|null} since     - unix timestamp string (optional)
+ * @param {string|null} until     - unix timestamp string (optional)
+ * @returns {Promise<object>}     - the full dashboard payload
+ */
+exports.getDashboardData = async (pageId, access_token, since = null, until = null) => {
+    const appsecret_proof = generateProof(access_token);
+    const commonParams = { access_token, appsecret_proof };
+
+    // ── 1. PAGE INFO ──────────────────────────────
+    const pageRes = await fbClient.get(`/${pageId}`, {
+        params: {
+            fields: "name,fan_count,followers_count,instagram_business_account",
+            ...commonParams,
+        },
+    });
+
+    const page = {
+        name: pageRes.data.name,
+        followers: pageRes.data.followers_count || pageRes.data.fan_count || 0,
+    };
+
+    console.log(`✅ Page: ${page.name} | Followers: ${page.followers}`);
+
+    // ── 2. INSTAGRAM DATA ─────────────────────────
+    let igProfile = null;
+    let instagramFormatted = [];
+    const igReelIdSet = new Set();
+
+    if (pageRes.data.instagram_business_account) {
+        const igId = pageRes.data.instagram_business_account.id;
+
+        const [igInfoRes, igAllMedia] = await Promise.all([
+            fbClient.get(`/${igId}`, {
+                params: { fields: "username,followers_count,media_count", ...commonParams },
+            }),
+            fetchAllPages(`/${igId}/media`, {
+                fields: "id,caption,media_type,media_url,like_count,comments_count,timestamp",
+                limit: 33,
+                ...commonParams,
+            }),
+        ]);
+
+        igProfile = igInfoRes.data;
+        console.log(`✅ IG Media fetched: ${igAllMedia.length} (profile reports ${igProfile.media_count})`);
+
+        const filteredIgMedia = igAllMedia.filter((item) => {
+            if (!since && !until) return true;
+            const ts = new Date(item.timestamp).getTime() / 1000;
+            if (since && ts < Number(since)) return false;
+            if (until && ts > Number(until)) return false;
+            return true;
+        });
+
+        console.log(`✅ IG Media after date filter: ${filteredIgMedia.length}`);
+
+        instagramFormatted = await Promise.all(
+            filteredIgMedia.map(async (item) => {
+                const isReel = item.media_type === "VIDEO";
+                if (isReel) igReelIdSet.add(item.id);
+
+                if (isReel) {
+                    const ins = await fetchIgReelInsights(item.id, commonParams);
+                    const approxDurationMs = ins.views > 0
+                        ? Math.round(ins.totalWatchTimeMs / ins.views)
+                        : 0;
+                    const completionRate = (approxDurationMs > 0 && ins.avgWatchTimeMs > 0)
+                        ? Math.min(ins.avgWatchTimeMs / approxDurationMs, 1)
+                        : 0;
+
+                    const score = calculateScore({
+                        likes: ins.likes || item.like_count || 0,
+                        comments: ins.comments || item.comments_count || 0,
+                        shares: ins.shares,
+                        views: ins.views,
+                        saves: ins.saves,
+                        watchTimeMs: ins.avgWatchTimeMs,
+                        reelDurationMs: approxDurationMs,
+                    });
+
+                    return {
+                        id: item.id,
+                        message: item.caption || "",
+                        image: item.media_url || null,
+                        created_time: item.timestamp,
+                        type: "reel",
+                        platform: "instagram",
+                        likes: ins.likes || item.like_count || 0,
+                        comments: ins.comments || item.comments_count || 0,
+                        shares: ins.shares,
+                        saves: ins.saves,
+                        views: ins.views,
+                        reach: ins.reach,
+                        crosspostedViews: ins.crosspostedViews,
+                        facebookViews: ins.facebookViews,
+                        avgWatchTimeSec: ins.avgWatchTimeSec,
+                        avgWatchTimeMs: ins.avgWatchTimeMs,
+                        totalWatchTimeSec: ins.totalWatchTimeSec,
+                        totalWatchTimeMs: ins.totalWatchTimeMs,
+                        skipRate: ins.skipRate,
+                        skipRatePct: ins.skipRatePct,
+                        completionRate: Math.round(completionRate * 100),
+                        approxDurationSec: Math.round(approxDurationMs / 1000),
+                        engagement: (ins.likes || item.like_count || 0) + (ins.comments || item.comments_count || 0) + ins.shares + ins.saves,
+                        score,
+                    };
+                } else {
+                    const ins = await fetchIgPostInsights(item.id, commonParams);
+                    const likes = item.like_count || 0;
+                    const comments = item.comments_count || 0;
+                    const score = calculateScore({ likes, comments, saves: ins.saves });
+
+                    return {
+                        id: item.id,
+                        message: item.caption || "",
+                        image: item.media_url || null,
+                        created_time: item.timestamp,
+                        type: "post",
+                        platform: "instagram",
+                        likes,
+                        comments,
+                        shares: 0,
+                        saves: ins.saves,
+                        follows: ins.follows,
+                        views: 0,
+                        reach: ins.reach,
+                        profileVisits: ins.profileVisits,
+                        engagement: likes + comments,
+                        score,
+                        avgWatchTimeSec: null,
+                        skipRate: null,
+                        completionRate: null,
+                    };
+                }
+            })
+        );
+
+        // Deduplicate IG
+        const seenIg = new Set();
+        instagramFormatted = instagramFormatted.filter((item) => {
+            if (seenIg.has(item.id)) return false;
+            seenIg.add(item.id);
+            return true;
+        });
+
+        console.log(`✅ IG Reels: ${instagramFormatted.filter(x => x.type === "reel").length} | Posts: ${instagramFormatted.filter(x => x.type === "post").length}`);
+    }
+
+    // ── 3. FACEBOOK VIDEOS / REELS ────────────────
+    const allVideos = await fetchAllPages(`/${pageId}/videos`, {
+        fields: "id,description,created_time,length,views,likes.summary(true),comments.summary(true),source,picture",
+        limit: 50,
+        ...(since && { since }),
+        ...(until && { until }),
+        ...commonParams,
+    });
+
+    console.log(`✅ FB Videos fetched: ${allVideos.length}`);
+
+    const videoIdSet = new Set(allVideos.map((v) => v.id));
+
+    const formattedVideos = await Promise.all(
+        allVideos.map(async (video) => {
+            const likes = video.likes?.summary?.total_count || 0;
+            const comments = video.comments?.summary?.total_count || 0;
+            const views = video.views || 0;
+            const isReel = video.length && video.length <= 90;
+            const fbIns = await fetchFbVideoInsights(video.id, isReel, commonParams);
+            const finalViews = (isReel && fbIns.fbReelsPlays > 0) ? fbIns.fbReelsPlays : views;
+
+            return {
+                id: video.id,
+                message: video.description || "",
+                image: video.source || video.picture || null,
+                created_time: video.created_time,
+                type: isReel ? "reel" : "video",
+                platform: "facebook",
+                likes,
+                comments,
+                shares: fbIns.shares,
+                saves: 0,
+                views: finalViews,
+                reach: fbIns.reach,
+                avgWatchTimeSec: fbIns.avgWatchTimeSec,
+                totalWatchTimeSec: fbIns.totalWatchTimeSec,
+                reelsReplays: fbIns.fbReelsReplays || null,
+                views15s: isReel ? (fbIns.retention3sViews || 0) : null,
+                skipRate: null,
+                completionRate: null,
+                engagement: likes + comments + fbIns.shares + finalViews,
+                score: calculateScore({ likes, comments, shares: fbIns.shares, views: finalViews }),
+            };
+        })
+    );
+
+    // ── 4. FACEBOOK POSTS ─────────────────────────
+    const allPosts = await fetchAllPages(`/${pageId}/posts`, {
+        fields: "id,message,created_time,full_picture,shares,likes.summary(true),comments.summary(true)",
+        limit: 50,
+        ...(since && { since }),
+        ...(until && { until }),
+        ...commonParams,
+    });
+
+    console.log(`✅ FB Posts fetched: ${allPosts.length}`);
+
+    const formattedPosts = await Promise.all(
+        allPosts.map(async (post) => {
+            if (videoIdSet.has(post.id)) return null;
+            if (igReelIdSet.has(post.id)) return null;
+            if (!post.message && !post.full_picture) return null;
+
+            const pic = post.full_picture || "";
+            if (
+                pic.includes("instagram.f") ||
+                pic.includes("cdninstagram.com") ||
+                pic.includes("instagram.com") ||
+                pic.includes(".mp4") ||
+                pic.includes("video.f") ||
+                pic.includes("video-") ||
+                /\/v\/[a-zA-Z0-9_-]+\.mp4/.test(pic)
+            ) return null;
+
+            const postIdBase = post.id.split("_")[1] || post.id;
+            const isVideoPost = allVideos.some((v) => {
+                const videoIdBase = v.id.split("_")[1] || v.id;
+                return videoIdBase === postIdBase;
+            });
+            if (isVideoPost) return null;
+
+            const likes = post.likes?.summary?.total_count || 0;
+            const comments = post.comments?.summary?.total_count || 0;
+            const shares = post.shares?.count || 0;
+
+            let reach = 0;
+            try {
+                const insights = await fbClient.get(`/${post.id}/insights`, {
+                    params: { metric: "post_impressions_unique", ...commonParams },
+                });
+                reach = insights.data.data?.[0]?.values?.[0]?.value ?? insights.data.data?.[0]?.value ?? 0;
+            } catch (_) { }
+
+            return {
+                id: post.id,
+                message: post.message || "",
+                image: post.full_picture || null,
+                created_time: post.created_time,
+                type: "post",
+                platform: "facebook",
+                likes,
+                comments,
+                shares,
+                saves: 0,
+                views: 0,
+                reach,
+                engagement: likes + comments + shares,
+                score: calculateScore({ likes, comments, shares }),
+                avgWatchTimeSec: null,
+                skipRate: null,
+                completionRate: null,
+            };
+        })
+    );
+
+    const filteredPosts = formattedPosts.filter(Boolean);
+
+    // ── 5. DEDUPLICATE + COMBINE ──────────────────
+    const fbContentRaw = [...filteredPosts, ...formattedVideos];
+    const fbContent = [...new Map(fbContentRaw.map((item) => [item.id, item])).values()];
+
+    const globalSeen = new Set();
+    const allContent = [...fbContent, ...instagramFormatted].filter((item) => {
+        const key = `${item.platform}::${item.id}`;
+        if (globalSeen.has(key)) return false;
+        globalSeen.add(key);
+        return true;
+    });
+
+    console.log(`✅ Total content after dedup: ${allContent.length} (FB: ${fbContent.length}, IG: ${instagramFormatted.length})`);
+
+    // ── 6. BEST CONTENT PICKERS ───────────────────
+    const bestByCategory = {
+        post: getBest(fbContent.filter((x) => x.type === "post")),
+        video: getBest(fbContent.filter((x) => x.type === "video")),
+        reel: getBest(fbContent.filter((x) => x.type === "reel")),
+    };
+
+    const bestOverall = getBest(fbContent);
+
+    const igBest = {
+        post: getBest(instagramFormatted.filter((x) => x.type === "post")),
+        reel: getBest(instagramFormatted.filter((x) => x.type === "reel")),
+        overall: getBest(instagramFormatted),
+        mostWatched: instagramFormatted
+            .filter((x) => x.type === "reel" && x.avgWatchTimeSec > 0)
+            .sort((a, b) => b.avgWatchTimeSec - a.avgWatchTimeSec)[0] || null,
+        bestRetention: instagramFormatted
+            .filter((x) => x.type === "reel" && x.views >= 100 && x.skipRate !== null)
+            .sort((a, b) => a.skipRate - b.skipRate)[0] || null,
+    };
+
+    const globalBest = getBest(allContent);
+
+    // ── 7. MONTHLY BREAKDOWN ──────────────────────
+    const monthlyMap = {};
+
+    allContent.forEach((item) => {
+        if (!item.created_time) return;
+        const d = new Date(item.created_time);
+        if (isNaN(d.getTime())) return;
+
+        const month = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+
+        if (!monthlyMap[month]) {
+            monthlyMap[month] = {
+                month,
+                facebook: { posts: 0, reels: 0, videos: 0, likes: 0, comments: 0, shares: 0, views: 0, engagement: 0, reach: 0 },
+                instagram: { posts: 0, reels: 0, likes: 0, comments: 0, shares: 0, saves: 0, views: 0, engagement: 0, reach: 0, totalWatchTimeSec: 0 },
+            };
+        }
+
+        const plat = monthlyMap[month][item.platform];
+
+        if (item.type === "post") plat.posts += 1;
+        else if (item.type === "reel") plat.reels += 1;
+        else if (item.type === "video") plat.videos = (plat.videos || 0) + 1;
+
+        plat.likes += item.likes || 0;
+        plat.comments += item.comments || 0;
+        plat.shares = (plat.shares || 0) + (item.shares || 0);
+        plat.saves = (plat.saves || 0) + (item.saves || 0);
+        plat.views = (plat.views || 0) + (item.views || 0);
+        plat.engagement += item.engagement || 0;
+        plat.reach += item.reach || 0;
+
+        if (item.platform === "instagram" && item.totalWatchTimeSec) {
+            monthlyMap[month].instagram.totalWatchTimeSec += item.totalWatchTimeSec;
+        }
+    });
+
+    // ── 8. TOTALS SUMMARY ─────────────────────────
+    const totalLikes = allContent.reduce((s, p) => s + (p.likes || 0), 0);
+    const totalComments = allContent.reduce((s, p) => s + (p.comments || 0), 0);
+    const totalShares = allContent.reduce((s, p) => s + (p.shares || 0), 0);
+    const totalSaves = allContent.reduce((s, p) => s + (p.saves || 0), 0);
+    const totalViews = allContent.reduce((s, p) => s + (p.views || 0), 0);
+    const totalEngagement = allContent.reduce((s, p) => s + (p.engagement || 0), 0);
+    const totalReach = allContent.reduce((s, p) => s + (p.reach || 0), 0);
+
+    const igReels = instagramFormatted.filter((x) => x.type === "reel");
+    const totalReelWatchTimeSec = igReels.reduce((s, r) => s + (r.totalWatchTimeSec || 0), 0);
+    const avgReelWatchTimeSec = igReels.length > 0
+        ? Math.round((igReels.reduce((s, r) => s + (r.avgWatchTimeSec || 0), 0) / igReels.length) * 10) / 10
+        : 0;
+    const avgReelSkipRate = igReels.filter(r => r.skipRate > 0).length > 0
+        ? Math.round(
+            igReels.filter(r => r.skipRate > 0).reduce((s, r) => s + r.skipRate, 0)
+            / igReels.filter(r => r.skipRate > 0).length * 100
+        )
+        : 0;
+
+    const fbReels = fbContent.filter((x) => x.type === "reel");
+    const fbReelsWithWatchTime = fbReels.filter(r => r.avgWatchTimeSec != null);
+    const fbAvgWatchTimeSec = fbReelsWithWatchTime.length > 0
+        ? Math.round(fbReelsWithWatchTime.reduce((s, r) => s + r.avgWatchTimeSec, 0) / fbReelsWithWatchTime.length * 10) / 10
+        : 0;
+
+    // ── 9. RETURN PAYLOAD ─────────────────────────
+    return {
+        success: true,
+        page,
+        instagram: {
+            profile: igProfile || null,
+            best: igBest,
+            data: instagramFormatted,
+        },
+        facebook: {
+            best: bestByCategory,
+            data: fbContent,
+        },
+        summary: {
+            totalContent: allContent.length,
+            facebookContent: fbContent.length,
+            instagramContent: instagramFormatted.length,
+            totalLikes,
+            totalComments,
+            totalShares,
+            totalSaves,
+            totalViews,
+            totalEngagement,
+            totalReach,
+            reels: {
+                ig: {
+                    count: igReels.length,
+                    totalWatchTimeSec: totalReelWatchTimeSec,
+                    totalWatchTimeMin: Math.round(totalReelWatchTimeSec / 60),
+                    avgWatchTimeSec: avgReelWatchTimeSec,
+                    avgSkipRatePct: `${avgReelSkipRate}%`,
+                },
+                fb: {
+                    count: fbReels.length,
+                    avgWatchTimeSec: fbAvgWatchTimeSec,
+                },
+            },
+        },
+        bestOverall,
+        globalBest,
+        bestByCategory,
+        igBest,
+        monthly: Object.values(monthlyMap).sort((a, b) => a.month.localeCompare(b.month)),
+        data: allContent,
+    };
+};
+
+// ─────────────────────────────────────────────
+// HTTP HANDLERS
+// ─────────────────────────────────────────────
+
+exports.getAccounts = async (req, res) => {
+    try {
+        const { data } = await fbClient.get("/v17.0/me/accounts", {
+            params: { access_token: ACCESS_TOKEN, appsecret_proof: APP_SECRET_PROOF },
+        });
+        res.json(data.data);
+    } catch (err) {
+        console.error("getAccounts Error:", err.response?.data || err.message);
+        res.status(500).json(err.response?.data || err.message);
+    }
+};
+
+exports.getPageDetails = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { data } = await fbClient.get(`/v17.0/${id}`, {
+            params: { fields: "instagram_business_account,name", access_token: ACCESS_TOKEN, appsecret_proof: APP_SECRET_PROOF },
+        });
+        res.json(data);
+    } catch (err) {
+        console.error("getPageDetails Error:", err.response?.data || err.message);
+        res.status(500).json(err.response?.data || err.message);
+    }
+};
+
+exports.getInstagramMedia = async (req, res) => {
+    try {
+        const { igId } = req.params;
+        const { data } = await fbClient.get(`/v17.0/${igId}/media`, {
+            params: {
+                fields: "id,caption,media_type,media_url,timestamp,like_count,comments_count",
+                limit: 50,
+                access_token: ACCESS_TOKEN,
+                appsecret_proof: APP_SECRET_PROOF,
+            },
+        });
+        res.json(data);
+    } catch (err) {
+        console.error("getInstagramMedia Error:", err.response?.data || err.message);
+        res.status(500).json(err.response?.data || err.message);
+    }
+};
+
+exports.getFacebookPosts = async (req, res) => {
+    try {
+        const { pageId } = req.params;
+        const { access_token } = req.query;
+        if (!access_token) return res.status(400).json({ error: "Page access token required" });
+
+        const appsecret_proof = generateProof(access_token);
+        const { data } = await fbClient.get(`/v17.0/${pageId}/posts`, {
+            params: {
+                fields: "id,message,created_time,full_picture,likes.summary(true),comments.summary(true)",
+                limit: 25,
+                access_token,
+                appsecret_proof,
+            },
+        });
+        res.json(data);
+    } catch (err) {
+        console.error(err.response?.data || err.message);
+        res.status(500).json(err.response?.data || err.message);
+    }
+};
+
 exports.getAllComments = async (req, res) => {
     try {
         const { pageId } = req.params;
         const { access_token } = req.query;
-
-        if (!access_token) {
-            return res.status(400).json({ error: "Page access token is required." });
-        }
+        if (!access_token) return res.status(400).json({ error: "Page access token is required." });
 
         const appsecret_proof = generateProof(access_token);
         const commonParams = { access_token, appsecret_proof };
 
-        // =========================
-        // 1. FETCH ALL FACEBOOK POSTS (paginated)
-        // Include comments.summary so we can skip posts with 0 comments
-        // =========================
         const fbPosts = await fetchAllPages(`/${pageId}/posts`, {
             fields: "id,message,created_time,comments.summary(true)",
             limit: 50,
@@ -189,22 +1663,11 @@ exports.getAllComments = async (req, res) => {
 
         console.log(`✅ FB Posts fetched: ${fbPosts.length}`);
 
-        // =========================
-        // 2. GET INSTAGRAM BUSINESS ACCOUNT ID
-        // =========================
         const pageInfoRes = await fbClient.get(`/${pageId}`, {
-            params: {
-                fields: "instagram_business_account",
-                ...commonParams,
-            },
+            params: { fields: "instagram_business_account", ...commonParams },
         });
-
         const igUserId = pageInfoRes.data?.instagram_business_account?.id;
-        console.log(`✅ IG User ID: ${igUserId || "Not linked"}`);
 
-        // =========================
-        // 3. FETCH ALL INSTAGRAM MEDIA (paginated)
-        // =========================
         let igMedia = [];
         if (igUserId) {
             igMedia = await fetchAllPages(`/${igUserId}/media`, {
@@ -212,135 +1675,50 @@ exports.getAllComments = async (req, res) => {
                 limit: 50,
                 ...commonParams,
             });
-            console.log(`✅ IG Media fetched: ${igMedia.length}`);
         }
 
-        // =========================
-        // 4. FETCH FACEBOOK COMMENTS IN PARALLEL
-        // Uses filter=stream to get ALL comments (not just top-level)
-        // Skips posts that have 0 comments per summary
-        // =========================
         const fbDataPromises = fbPosts.map(async (post) => {
             const summaryCount = post.comments?.summary?.total_count ?? null;
-
-            // Skip API call if post has no comments
             if (summaryCount === 0) {
-                return {
-                    platform: "facebook",
-                    postId: post.id,
-                    message: post.message || null,
-                    createdTime: post.created_time,
-                    totalComments: 0,
-                    comments: [],
-                };
+                return { platform: "facebook", postId: post.id, message: post.message || null, createdTime: post.created_time, totalComments: 0, comments: [] };
             }
-
             try {
                 const comments = await fetchAllPages(`/${post.id}/comments`, {
                     fields: "id,message,created_time,from{name,id},like_count",
-                    filter: "stream", // KEY: gets all comments including replies
+                    filter: "stream",
                     limit: 50,
                     ...commonParams,
                 });
-
-                console.log(`  → Post ${post.id}: ${comments.length} comments`);
-
-                return {
-                    platform: "facebook",
-                    postId: post.id,
-                    message: post.message || null,
-                    createdTime: post.created_time,
-                    totalComments: comments.length,
-                    comments,
-                };
+                return { platform: "facebook", postId: post.id, message: post.message || null, createdTime: post.created_time, totalComments: comments.length, comments };
             } catch (err) {
                 const errMsg = err.response?.data?.error?.message || err.message;
-                console.error(`❌ FB comment error [${post.id}]: ${errMsg}`);
-                return {
-                    platform: "facebook",
-                    postId: post.id,
-                    message: post.message || null,
-                    createdTime: post.created_time,
-                    totalComments: 0,
-                    comments: [],
-                    error: errMsg,
-                };
+                return { platform: "facebook", postId: post.id, message: post.message || null, createdTime: post.created_time, totalComments: 0, comments: [], error: errMsg };
             }
         });
 
-        // =========================
-        // 5. FETCH INSTAGRAM COMMENTS IN PARALLEL
-        // Skips media with 0 comments_count
-        // =========================
         const igDataPromises = igMedia.map(async (media) => {
-            // Skip API call if media has no comments
             if ((media.comments_count ?? 0) === 0) {
-                return {
-                    platform: "instagram",
-                    mediaId: media.id,
-                    caption: media.caption || null,
-                    mediaType: media.media_type,
-                    timestamp: media.timestamp,
-                    likeCount: media.like_count || 0,
-                    totalComments: 0,
-                    comments: [],
-                };
+                return { platform: "instagram", mediaId: media.id, caption: media.caption || null, mediaType: media.media_type, timestamp: media.timestamp, likeCount: media.like_count || 0, totalComments: 0, comments: [] };
             }
-
             try {
                 const comments = await fetchAllPages(`/${media.id}/comments`, {
                     fields: "id,text,username,timestamp,replies{id,text,username,timestamp}",
                     limit: 50,
                     ...commonParams,
                 });
-
-                console.log(`  → IG Media ${media.id}: ${comments.length} comments`);
-
-                return {
-                    platform: "instagram",
-                    mediaId: media.id,
-                    caption: media.caption || null,
-                    mediaType: media.media_type,
-                    timestamp: media.timestamp,
-                    likeCount: media.like_count || 0,
-                    totalComments: comments.length,
-                    comments,
-                };
+                return { platform: "instagram", mediaId: media.id, caption: media.caption || null, mediaType: media.media_type, timestamp: media.timestamp, likeCount: media.like_count || 0, totalComments: comments.length, comments };
             } catch (err) {
                 const errMsg = err.response?.data?.error?.message || err.message;
-                console.error(`❌ IG comment error [${media.id}]: ${errMsg}`);
-                return {
-                    platform: "instagram",
-                    mediaId: media.id,
-                    caption: media.caption || null,
-                    mediaType: media.media_type,
-                    timestamp: media.timestamp,
-                    likeCount: media.like_count || 0,
-                    totalComments: 0,
-                    comments: [],
-                    error: errMsg,
-                };
+                return { platform: "instagram", mediaId: media.id, caption: media.caption || null, mediaType: media.media_type, timestamp: media.timestamp, likeCount: media.like_count || 0, totalComments: 0, comments: [], error: errMsg };
             }
         });
 
-        // =========================
-        // 6. RUN ALL COMMENT FETCHES CONCURRENTLY
-        // =========================
-        const [fbData, igData] = await Promise.all([
-            Promise.all(fbDataPromises),
-            Promise.all(igDataPromises),
-        ]);
-
+        const [fbData, igData] = await Promise.all([Promise.all(fbDataPromises), Promise.all(igDataPromises)]);
         const allData = [...fbData, ...igData];
 
         const totalFBComments = fbData.reduce((sum, p) => sum + p.totalComments, 0);
         const totalIGComments = igData.reduce((sum, m) => sum + m.totalComments, 0);
 
-        console.log(`✅ Done — FB comments: ${totalFBComments}, IG comments: ${totalIGComments}`);
-
-        // =========================
-        // 7. SEND RESPONSE
-        // =========================
         return res.status(200).json({
             success: true,
             summary: {
@@ -356,100 +1734,14 @@ exports.getAllComments = async (req, res) => {
     } catch (err) {
         const errMsg = err.response?.data?.error?.message || err.message;
         console.error("❌ getAllComments error:", errMsg);
-        return res.status(500).json({
-            success: false,
-            error: errMsg,
-        });
+        return res.status(500).json({ success: false, error: errMsg });
     }
 };
 
-
-function calculateScore({ likes = 0, comments = 0, shares = 0, views = 0 }) {
-    return likes * 4 + comments * 6 + shares * 8 + views * 0.5;
-}
-
-// =========================
-// BEST PICKER
-// =========================
-function getBest(arr) {
-    return arr.length ? [...arr].sort((a, b) => b.score - a.score)[0] : null;
-}
-
-// =========================
-// INSTAGRAM INSIGHTS HELPER — with full debug logging
-// =========================
-async function fetchIgInsights(itemId, mediaType, commonParams) {
-    let views = 0;
-    let reach = 0;
-
-    if (mediaType === "VIDEO") {
-        // Correct metric order based on what the API actually accepts:
-        // "plays" = actual play count (use this first)
-        // "views" = same as plays on newer API versions
-        // "video_views" = legacy, may return 0 for newer reels
-        // "clips_replays_count" = replays only (not total plays)
-        // "ig_reels_aggregated_all_plays_count" = includes organic + paid combined
-        const viewMetrics = [
-            "plays",
-            "views",
-            "video_views",
-            "ig_reels_aggregated_all_plays_count",
-            "clips_replays_count",
-        ];
-
-        for (const metric of viewMetrics) {
-            try {
-                const res = await fbClient.get(`/${itemId}/insights`, {
-                    params: { metric, ...commonParams },
-                });
-
-                const insightData = res.data.data || [];
-                for (const insight of insightData) {
-                    const val = insight.values?.[0]?.value ?? insight.value ?? 0;
-                    if (insight.name === metric) views = val;
-                }
-
-                if (views > 0) {
-                    console.log(`  ✅ IG views for ${itemId}: ${views} (metric: ${metric})`);
-                    break;
-                }
-
-            } catch (err) {
-                // silently skip and try next metric
-            }
-        }
-
-        // Fetch reach separately — never combine with video metrics
-        try {
-            const res = await fbClient.get(`/${itemId}/insights`, {
-                params: { metric: "reach", ...commonParams },
-            });
-            (res.data.data || []).forEach((insight) => {
-                const val = insight.values?.[0]?.value ?? insight.value ?? 0;
-                if (insight.name === "reach") reach = val;
-            });
-        } catch (_) { }
-
-    } else {
-        // IMAGE / CAROUSEL_ALBUM — only reach available
-        try {
-            const res = await fbClient.get(`/${itemId}/insights`, {
-                params: { metric: "reach", ...commonParams },
-            });
-            (res.data.data || []).forEach((insight) => {
-                const val = insight.values?.[0]?.value ?? insight.value ?? 0;
-                if (insight.name === "reach") reach = val;
-            });
-        } catch (_) { }
-    }
-
-    return { views, reach };
-}
-
-// =========================
-// DASHBOARD CONTROLLER
-// GET /api/:pageId/dashboard?access_token=PAGE_ACCESS_TOKEN&since=UNIX&until=UNIX
-// =========================
+/**
+ * GET /api/facebook/dashboard/:pageId?access_token=...
+ * HTTP wrapper — calls getDashboardData and sends the result.
+ */
 exports.getDashboard = async (req, res) => {
     try {
         const { pageId } = req.params;
@@ -459,347 +1751,8 @@ exports.getDashboard = async (req, res) => {
             return res.status(400).json({ error: "Page access token required" });
         }
 
-        const appsecret_proof = generateProof(access_token);
-        const commonParams = { access_token, appsecret_proof };
-
-        // =========================
-        // 1. PAGE INFO
-        // =========================
-        const pageRes = await fbClient.get(`/${pageId}`, {
-            params: {
-                fields: "name,fan_count,followers_count,instagram_business_account",
-                ...commonParams,
-            },
-        });
-
-        const page = {
-            name: pageRes.data.name,
-            followers: pageRes.data.followers_count || pageRes.data.fan_count || 0,
-        };
-
-        console.log(`✅ Page: ${page.name} | Followers: ${page.followers}`);
-
-        // =========================
-        // 2. INSTAGRAM DATA (ALL paginated)
-        // =========================
-        let igProfile = null;
-        let instagramFormatted = [];
-
-        if (pageRes.data.instagram_business_account) {
-            const igId = pageRes.data.instagram_business_account.id;
-
-            // Fetch IG profile + ALL media in parallel
-            const [igInfoRes, igAllMedia] = await Promise.all([
-                fbClient.get(`/${igId}`, {
-                    params: {
-                        fields: "username,followers_count,media_count",
-                        ...commonParams,
-                    },
-                }),
-                fetchAllPages(`/${igId}/media`, {
-                    fields: "id,caption,media_type,media_url,like_count,comments_count,timestamp",
-                    limit: 50,
-                    ...commonParams,
-                }),
-            ]);
-
-            igProfile = igInfoRes.data;
-            console.log(`✅ IG Media fetched: ${igAllMedia.length}`);
-
-            // Fetch insights for each IG media in parallel
-            instagramFormatted = await Promise.all(
-                igAllMedia.map(async (item) => {
-                    const isReel = item.media_type === "VIDEO";
-
-                    // Use the robust helper that tries multiple metric names
-                    const { views, reach } = await fetchIgInsights(
-                        item.id,
-                        item.media_type,
-                        commonParams
-                    );
-
-                    const likes = item.like_count || 0;
-                    const comments = item.comments_count || 0;
-
-                    // Score now correctly includes views for reels
-                    const score = calculateScore({ likes, comments, views });
-
-                    return {
-                        id: item.id,
-                        message: item.caption || "",
-                        image: item.media_url || null,
-                        created_time: item.timestamp,
-                        type: isReel ? "reel" : "post",
-                        likes,
-                        comments,
-                        shares: 0,
-                        views,           // ← properly populated for reels
-                        engagement: likes + comments + views,
-                        score,           // ← now includes views weight
-                        reach,
-                        platform: "instagram",
-                    };
-                })
-            );
-
-            // Deduplicate IG
-            const seenIg = new Set();
-            instagramFormatted = instagramFormatted.filter((item) => {
-                if (seenIg.has(item.id)) return false;
-                seenIg.add(item.id);
-                return true;
-            });
-
-            console.log(
-                `✅ IG Reels with views > 0: ${instagramFormatted.filter((x) => x.type === "reel" && x.views > 0).length
-                }`
-            );
-        }
-
-        // =========================
-        // 3. FACEBOOK VIDEOS / REELS — ALL paginated
-        // =========================
-        const allVideos = await fetchAllPages(`/${pageId}/videos`, {
-            fields: "id,description,created_time,length,views,likes.summary(true),comments.summary(true),source,picture",
-            limit: 50,
-            ...(since && { since }),
-            ...(until && { until }),
-            ...commonParams,
-        });
-
-        console.log(`✅ FB Videos fetched: ${allVideos.length}`);
-
-        const formattedVideos = await Promise.all(
-            allVideos.map(async (video) => {
-                const likes = video.likes?.summary?.total_count || 0;
-                const comments = video.comments?.summary?.total_count || 0;
-                const views = video.views || 0;
-                const isReel = video.length && video.length <= 90;
-
-                let shares = 0;
-                let reach = 0;
-
-                await Promise.all([
-                    // Shares
-                    fbClient.get(`/${video.id}/sharedposts`, {
-                        params: { summary: true, ...commonParams },
-                    }).then((r) => {
-                        shares = r.data.summary?.total_count || 0;
-                    }).catch(() => { }),
-
-                    // Reach / impressions
-                    fbClient.get(`/${video.id}/video_insights`, {
-                        params: {
-                            metric: "total_video_impressions_unique",
-                            ...commonParams,
-                        },
-                    }).then((r) => {
-                        reach = r.data.data?.[0]?.values?.[0]?.value || 0;
-                    }).catch(() => { }),
-                ]);
-
-                return {
-                    id: video.id,
-                    message: video.description || "",
-                    image: video.source || video.picture || null,
-                    created_time: video.created_time,
-                    type: isReel ? "reel" : "video",
-                    likes,
-                    comments,
-                    shares,
-                    views,
-                    engagement: likes + comments + shares + views,
-                    score: calculateScore({ likes, comments, shares, views }),
-                    reach,
-                    platform: "facebook",
-                };
-            })
-        );
-
-        // =========================
-        // 4. FACEBOOK POSTS — ALL paginated
-        // =========================
-        const allPosts = await fetchAllPages(`/${pageId}/posts`, {
-            fields: "id,message,created_time,full_picture,shares,likes.summary(true),comments.summary(true)",
-            limit: 50,
-            ...(since && { since }),
-            ...(until && { until }),
-            ...commonParams,
-        });
-
-        console.log(`✅ FB Posts fetched: ${allPosts.length}`);
-
-        // Build a Set of video IDs so we can skip cross-posted videos in posts
-        const videoIdSet = new Set(allVideos.map((v) => v.id));
-
-        const formattedPosts = await Promise.all(
-            allPosts.map(async (post) => {
-                // Skip if this post is actually a video (already handled above)
-                if (videoIdSet.has(post.id)) return null;
-
-                // Skip stubs with no content
-                if (!post.message && !post.full_picture) return null;
-
-                // Skip cross-posted IG reels
-                const pic = post.full_picture || "";
-                if (
-                    pic.includes("instagram.f") ||
-                    pic.includes("cdninstagram.com") ||
-                    pic.includes(".mp4")
-                ) return null;
-
-                const likes = post.likes?.summary?.total_count || 0;
-                const comments = post.comments?.summary?.total_count || 0;
-                const shares = post.shares?.count || 0;
-
-                let reach = 0;
-                try {
-                    const insights = await fbClient.get(`/${post.id}/insights`, {
-                        params: {
-                            metric: "post_impressions_unique",
-                            ...commonParams,
-                        },
-                    });
-                    reach =
-                        insights.data.data?.[0]?.values?.[0]?.value ??
-                        insights.data.data?.[0]?.value ??
-                        0;
-                } catch (err) { }
-
-                return {
-                    id: post.id,
-                    message: post.message || "",
-                    image: post.full_picture || null,
-                    created_time: post.created_time,
-                    type: "post",
-                    likes,
-                    comments,
-                    shares,
-                    views: 0,
-                    engagement: likes + comments + shares,
-                    score: calculateScore({ likes, comments, shares }),
-                    reach,
-                    platform: "facebook",
-                };
-            })
-        );
-
-        // Filter out nulls from skipped posts
-        const filteredPosts = formattedPosts.filter(Boolean);
-
-        // =========================
-        // 5. DEDUPLICATE + COMBINE ALL FB CONTENT
-        // =========================
-        const fbContentRaw = [...filteredPosts, ...formattedVideos];
-        const fbContent = [
-            ...new Map(fbContentRaw.map((item) => [item.id, item])).values(),
-        ];
-
-        // Global dedup across FB + IG (handles rare ID collisions)
-        const globalSeen = new Set();
-        const allContent = [...fbContent, ...instagramFormatted].filter((item) => {
-            const key = `${item.platform}::${item.id}`;
-            if (globalSeen.has(key)) return false;
-            globalSeen.add(key);
-            return true;
-        });
-
-        console.log(`✅ Total content after dedup: ${allContent.length}`);
-
-        // =========================
-        // 6. BEST CONTENT PICKERS
-        // =========================
-        const bestByCategory = {
-            post: getBest(fbContent.filter((x) => x.type === "post")),
-            video: getBest(fbContent.filter((x) => x.type === "video")),
-            reel: getBest(fbContent.filter((x) => x.type === "reel")),
-        };
-
-        const bestOverall = getBest(fbContent);
-
-        const igBest = {
-            post: getBest(instagramFormatted.filter((x) => x.type === "post")),
-            reel: getBest(instagramFormatted.filter((x) => x.type === "reel")),  // ← now scores correctly with views
-            overall: getBest(instagramFormatted),
-        };
-
-        const globalBest = getBest(allContent);
-
-        // =========================
-        // 7. MONTHLY BREAKDOWN
-        // =========================
-        const monthlyMap = {};
-
-        allContent.forEach((item) => {
-            if (!item.created_time) return;
-            const d = new Date(item.created_time);
-            if (isNaN(d.getTime())) return;
-
-            const month = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-
-            if (!monthlyMap[month]) {
-                monthlyMap[month] = {
-                    month,
-                    facebook: { posts: 0, likes: 0, comments: 0, shares: 0, engagement: 0, reach: 0 },
-                    instagram: { posts: 0, likes: 0, comments: 0, views: 0, engagement: 0, reach: 0 },
-                };
-            }
-
-            const plat = monthlyMap[month][item.platform];
-            plat.posts += 1;
-            plat.likes += item.likes || 0;
-            plat.comments += item.comments || 0;
-            plat.shares = (plat.shares || 0) + (item.shares || 0);
-            plat.views = (plat.views || 0) + (item.views || 0);   // ← track IG reel views in monthly
-            plat.engagement += item.engagement || 0;
-            plat.reach += item.reach || 0;
-        });
-
-        // =========================
-        // 8. TOTALS SUMMARY
-        // =========================
-        const totalLikes = allContent.reduce((s, p) => s + (p.likes || 0), 0);
-        const totalComments = allContent.reduce((s, p) => s + (p.comments || 0), 0);
-        const totalShares = allContent.reduce((s, p) => s + (p.shares || 0), 0);
-        const totalViews = allContent.reduce((s, p) => s + (p.views || 0), 0);
-        const totalEngagement = allContent.reduce((s, p) => s + (p.engagement || 0), 0);
-        const totalReach = allContent.reduce((s, p) => s + (p.reach || 0), 0);
-
-        // =========================
-        // 9. FINAL RESPONSE
-        // =========================
-        return res.status(200).json({
-            success: true,
-            page,
-            instagram: {
-                profile: igProfile || null,
-                best: igBest,
-                data: instagramFormatted,
-            },
-            facebook: {
-                best: bestByCategory,
-                data: fbContent,
-            },
-            summary: {
-                totalContent: allContent.length,
-                facebookContent: fbContent.length,
-                instagramContent: instagramFormatted.length,
-                totalLikes,
-                totalComments,
-                totalShares,
-                totalViews,
-                totalEngagement,
-                totalReach,
-            },
-            bestOverall,
-            globalBest,
-            bestByCategory,
-            igBest,
-            monthly: Object.values(monthlyMap).sort((a, b) =>
-                b.month.localeCompare(a.month)
-            ),
-            data: allContent,
-        });
+        const data = await exports.getDashboardData(pageId, access_token, since, until);
+        return res.status(200).json(data);
 
     } catch (err) {
         console.error("❌ Dashboard Error:", err.response?.data || err.message);
