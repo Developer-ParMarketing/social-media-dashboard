@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
-import { useParams, useSearchParams } from "next/navigation";
+import { useParams, useSearchParams, useRouter } from "next/navigation";
 import API from "@/services/api";
 
 /* ── helpers ── */
@@ -488,6 +488,7 @@ function QuickInsights({ monthly, metric }) {
    MAIN PAGE
 ════════════════════════════════════════════════════ */
 export default function AccountDetails() {
+    const router = useRouter();
     const { id } = useParams();
     const searchParams = useSearchParams();
     const pageToken = searchParams.get("token");
@@ -634,6 +635,13 @@ export default function AccountDetails() {
             {/* NAV */}
             {/* NAV — replace existing nav div */}
             <div className="sticky top-0 z-40 bg-white/80 backdrop-blur border-b border-gray-200 px-6 py-3 flex items-center gap-3">
+                {/* Back Button */}
+                <button
+                    onClick={() => router.back()}
+                    className="flex items-center justify-center w-10 h-10 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 hover:border-indigo-300 transition-all"
+                >
+                    ←
+                </button>
                 <div className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse" />
                 <span className="text-sm font-semibold text-gray-600 tracking-wide uppercase">{page.name}</span>
 
