@@ -25,6 +25,6 @@ app.use("/api/instagram", instaRoutes);
 app.use("/api/facebook", facebookRoutes);
 app.use("/api/sync", syncRoutes);
 
-app.listen(5000, () => {
-    console.log("Server running on port 5000");
+app.listen(4004, () => {
+    console.log("Server running on port 4004");
 });
