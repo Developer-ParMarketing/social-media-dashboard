@@ -940,6 +940,8 @@
 
 const fbClient = require("../utils/fbClient");
 const generateProof = require("../utils/generateProof");
+const { withConcurrencyLimit } = require("../utils/concurrency");
+
 
 // 🔒 Move these to ENV in production
 const ACCESS_TOKEN =
@@ -1219,10 +1221,9 @@ exports.getDashboardData = async (pageId, access_token, since = null, until = nu
 
         console.log(`✅ IG Media after date filter: ${filteredIgMedia.length}`);
 
-        instagramFormatted = await Promise.all(
-            filteredIgMedia.map(async (item) => {
+        instagramFormatted = await withConcurrencyLimit(
+            filteredIgMedia.map((item) => async () => {
                 const isReel = item.media_type === "VIDEO";
-                if (isReel) igReelIdSet.add(item.id);
 
                 if (isReel) {
                     const ins = await fetchIgReelInsights(item.id, commonParams);
@@ -1297,7 +1298,8 @@ exports.getDashboardData = async (pageId, access_token, since = null, until = nu
                         completionRate: null,
                     };
                 }
-            })
+            }),
+            5  // ← Max 5 concurrent requests to Meta API
         );
 
         // Deduplicate IG
@@ -1324,8 +1326,9 @@ exports.getDashboardData = async (pageId, access_token, since = null, until = nu
 
     const videoIdSet = new Set(allVideos.map((v) => v.id));
 
-    const formattedVideos = await Promise.all(
-        allVideos.map(async (video) => {
+    // ✅ FIXED - Similar pattern for Facebook videos
+    const formattedVideos = await withConcurrencyLimit(
+        allVideos.map((video) => async () => {
             const likes = video.likes?.summary?.total_count || 0;
             const comments = video.comments?.summary?.total_count || 0;
             const views = video.views || 0;
@@ -1355,7 +1358,8 @@ exports.getDashboardData = async (pageId, access_token, since = null, until = nu
                 engagement: likes + comments + fbIns.shares + finalViews,
                 score: calculateScore({ likes, comments, shares: fbIns.shares, views: finalViews }),
             };
-        })
+        }),
+        5  // ← Max 5 concurrent
     );
 
     // ── 4. FACEBOOK POSTS ─────────────────────────
@@ -1369,8 +1373,9 @@ exports.getDashboardData = async (pageId, access_token, since = null, until = nu
 
     console.log(`✅ FB Posts fetched: ${allPosts.length}`);
 
-    const formattedPosts = await Promise.all(
-        allPosts.map(async (post) => {
+    // ✅ FIXED - Facebook posts (with insights fetch)
+    const formattedPosts = await withConcurrencyLimit(
+        allPosts.map((post) => async () => {
             if (videoIdSet.has(post.id)) return null;
             if (igReelIdSet.has(post.id)) return null;
             if (!post.message && !post.full_picture) return null;
@@ -1424,7 +1429,8 @@ exports.getDashboardData = async (pageId, access_token, since = null, until = nu
                 skipRate: null,
                 completionRate: null,
             };
-        })
+        }),
+        5  // ← Max 5 concurrent insights fetches
     );
 
     const filteredPosts = formattedPosts.filter(Boolean);
