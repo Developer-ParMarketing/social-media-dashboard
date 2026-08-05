@@ -501,7 +501,7 @@ export default function AccountDetails() {
     const [activeTab, setActiveTab] = useState("all");
     const [syncing, setSyncing] = useState(false);
     const [lastSynced, setLastSynced] = useState(null);
-
+    const [expandedComment, setExpandedComment] = useState(null);
 
 
     const handleSync = async () => {
@@ -803,49 +803,69 @@ export default function AccountDetails() {
 
 
                 {/* ── COMMENTS TABLE ── */}
+                {/* ── COMMENTS SECTION ── */}
                 <div>
-                    <SectionTitle>💬 All Comments ({allComments.length})</SectionTitle>
+                    <div className="mb-4">
+                        <h3 className="text-lg font-bold text-gray-800">💬 Comments ({allComments?.length || 0})</h3>
+                    </div>
+
                     {loadingComments ? (
-                        <div className="bg-white rounded-2xl p-10 text-center text-gray-400 text-sm border border-gray-100">Loading comments…</div>
-                    ) : allComments.length === 0 ? (
-                        <div className="bg-white rounded-2xl p-10 text-center text-gray-400 text-sm border border-gray-100">No comments found</div>
+                        <div className="bg-white rounded-xl p-8 text-center text-gray-400 text-sm border border-gray-100">
+                            Loading comments…
+                        </div>
+                    ) : !allComments || allComments.length === 0 ? (
+                        <div className="bg-white rounded-xl p-8 text-center text-gray-400 text-sm border border-gray-100">
+                            No comments found
+                        </div>
                     ) : (
-                        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-                            <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
-                                <table className="w-full text-sm min-w-[800px]">
-                                    <thead className="sticky top-0 bg-gray-50 border-b border-gray-200 z-10">
-                                        <tr>
-                                            {["Platform", "Post ID", "Username", "Comment", "Date"].map((h, i) => (
-                                                <th key={h} className={`px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider ${i === 0 || i === 2 || i === 3 ? "text-left" : "text-left"}`}>{h}</th>
-                                            ))}
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-gray-50">
-                                        {allComments.map((c, i) => {
-                                            const pc = PLATFORM_COLORS[c.platform] || PLATFORM_COLORS.facebook;
-                                            return (
-                                                <tr key={i} className="hover:bg-gray-50/60 transition-colors">
-                                                    <td className="px-4 py-3">
-                                                        <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full ${pc.bg} ${pc.text}`}>
-                                                            <span className={`w-1.5 h-1.5 rounded-full ${pc.dot}`} />
-                                                            {c.platform}
-                                                        </span>
-                                                    </td>
-                                                    <td className="px-4 py-3 text-xs text-gray-400 font-mono">{c.postId}</td>
-                                                    <td className="px-4 py-3 font-semibold text-gray-800">{c.username}</td>
-                                                    <td className="px-4 py-3 text-gray-600 max-w-xs truncate">{c.text}</td>
-                                                    <td className="px-4 py-3 text-xs text-gray-400 whitespace-nowrap">
-                                                        {new Date(c.timestamp).toLocaleString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
-                                                    </td>
-                                                </tr>
-                                            );
-                                        })}
-                                    </tbody>
-                                </table>
-                            </div>
+                        <div className="space-y-3 max-h-[600px] overflow-y-auto">
+                            {allComments.map((c, i) => {
+                                const platformColors = {
+                                    facebook: "bg-blue-50 border-blue-200 text-blue-900",
+                                    instagram: "bg-pink-50 border-pink-200 text-pink-900"
+                                };
+
+                                const colors = platformColors[c.platform] || platformColors.facebook;
+
+                                return (
+                                    <button
+                                        key={i}
+                                        onClick={() => setExpandedComment(i)}
+                                        className={`w-full text-left rounded-lg border p-4 hover:shadow-md transition-all ${colors}`}
+                                    >
+                                        <div className="flex items-start justify-between gap-3 mb-2">
+                                            <div className="flex flex-col gap-1 flex-1">
+                                                <span className="text-sm font-bold">
+                                                    {c.username || "Anonymous"}
+                                                </span>
+                                                <span className="text-xs opacity-70">
+                                                    {c.timestamp ? new Date(c.timestamp).toLocaleDateString("en-IN") : "No date"}
+                                                </span>
+                                            </div>
+                                            <span className="text-xs font-mono opacity-60 px-2 py-1 bg-black/5 rounded">
+                                                {c.platform}
+                                            </span>
+                                        </div>
+                                        <p className="text-sm line-clamp-2 opacity-90">
+                                            {c.text || "No text"}
+                                        </p>
+                                        {c.text && c.text.length > 80 && (
+                                            <p className="text-xs opacity-60 mt-2">Read more →</p>
+                                        )}
+                                    </button>
+                                );
+                            })}
                         </div>
                     )}
                 </div>
+
+                {/* ── COMMENT MODAL ── */}
+                {expandedComment !== null && allComments && allComments[expandedComment] && (
+                    <CommentDetailModal
+                        comment={allComments[expandedComment]}
+                        onClose={() => setExpandedComment(null)}
+                    />
+                )}
             </div>
 
             {selectedPost && <PostModal post={selectedPost} onClose={() => setSelectedPost(null)} />}
@@ -1048,6 +1068,11 @@ function PostModal({ post, onClose }) {
             </div>
         </div>
     );
+    const Empty = () => (
+        <div className="min-h-screen flex items-center justify-center bg-gray-50">
+            <p className="text-gray-400">No data available</p>
+        </div>
+    );
 }
 
 /* ════════════════════════════════════════════════════
@@ -1094,1093 +1119,98 @@ const Empty = () => (
     </div>
 );
 
-// "use client";
-
-// import { useEffect, useState, useRef, useCallback } from "react";
-// import { useParams, useSearchParams } from "next/navigation";
-// import API from "@/services/api";
-
-// /* ─────────────────────────────────────────────────────────────
-//    HELPERS
-// ───────────────────────────────────────────────────────────── */
-// const fmt = (n) => (n ?? 0).toLocaleString("en-IN");
-
-// const fmtSec = (s) => {
-//     if (!s || s <= 0) return "—";
-//     if (s >= 3600) {
-//         const h = Math.floor(s / 3600);
-//         const m = Math.floor((s % 3600) / 60);
-//         return `${h}h ${m}m`;
-//     }
-//     return s >= 60 ? `${Math.floor(s / 60)}m ${s % 60}s` : `${s}s`;
-// };
-
-// const fmtHMS = (sec) => {
-//     if (!sec || sec <= 0) return "—";
-//     const h = Math.floor(sec / 3600);
-//     const m = Math.floor((sec % 3600) / 60);
-//     const s = sec % 60;
-//     if (h > 0) return `${h}h ${m}m`;
-//     if (m > 0) return `${m}m ${s}s`;
-//     return `${s}s`;
-// };
-
-// const PLATFORM_COLORS = {
-//     facebook: { bg: "bg-blue-50", text: "text-blue-700", border: "border-blue-200", dot: "bg-blue-500" },
-//     instagram: { bg: "bg-fuchsia-50", text: "text-fuchsia-700", border: "border-fuchsia-200", dot: "bg-fuchsia-500" },
-// };
-
-// const TYPE_COLORS = {
-//     reel: { bg: "bg-amber-50", text: "text-amber-700" },
-//     video: { bg: "bg-orange-50", text: "text-orange-700" },
-//     post: { bg: "bg-emerald-50", text: "text-emerald-700" },
-// };
-
-// /* ─────────────────────────────────────────────────────────────
-//    ANALYTICS CHARTS
-// ───────────────────────────────────────────────────────────── */
-// function AnalyticsCharts({ monthly }) {
-//     const canvasRef = useRef(null);
-//     const chartInstance = useRef(null);
-//     const [activeMetric, setActiveMetric] = useState("engagement");
-//     const [chartReady, setChartReady] = useState(false);
-
-//     const months = (monthly || []).map((m) => m.month);
-
-//     // All chart config in one place — keyed by metric
-//     const CHART_CONFIG = {
-//         engagement: {
-//             title: "Engagement Over Time",
-//             subtitle: "Likes + comments + shares + saves",
-//             type: "line",
-//             datasets: [
-//                 {
-//                     label: "Facebook",
-//                     data: (monthly || []).map((m) => m.facebook?.engagement ?? 0),
-//                     borderColor: "#3b82f6",
-//                     backgroundColor: "rgba(59,130,246,0.08)",
-//                     borderWidth: 2.5,
-//                     pointRadius: 4,
-//                     tension: 0.4,
-//                     fill: true,
-//                     borderDash: [],
-//                 },
-//                 {
-//                     label: "Instagram",
-//                     data: (monthly || []).map((m) => m.instagram?.engagement ?? 0),
-//                     borderColor: "#d946ef",
-//                     backgroundColor: "rgba(217,70,239,0.08)",
-//                     borderWidth: 2.5,
-//                     pointRadius: 4,
-//                     tension: 0.4,
-//                     fill: true,
-//                     borderDash: [6, 3],
-//                 },
-//             ],
-//         },
-//         reach: {
-//             title: "Reach & Views",
-//             subtitle: "Unique accounts that saw your content",
-//             type: "line",
-//             datasets: [
-//                 {
-//                     label: "FB Reach",
-//                     data: (monthly || []).map((m) => m.facebook?.reach ?? 0),
-//                     borderColor: "#3b82f6",
-//                     borderWidth: 2.5,
-//                     pointRadius: 4,
-//                     tension: 0.4,
-//                     fill: false,
-//                     borderDash: [],
-//                     backgroundColor: "rgba(59,130,246,0.06)",
-//                 },
-//                 {
-//                     label: "IG Reach",
-//                     data: (monthly || []).map((m) => m.instagram?.reach ?? 0),
-//                     borderColor: "#d946ef",
-//                     borderWidth: 2.5,
-//                     pointRadius: 4,
-//                     tension: 0.4,
-//                     fill: false,
-//                     borderDash: [6, 3],
-//                     backgroundColor: "rgba(217,70,239,0.06)",
-//                 },
-//                 {
-//                     label: "IG Views",
-//                     data: (monthly || []).map((m) => m.instagram?.views ?? 0),
-//                     borderColor: "#f59e0b",
-//                     borderWidth: 2,
-//                     pointRadius: 4,
-//                     tension: 0.4,
-//                     fill: false,
-//                     borderDash: [2, 4],
-//                     backgroundColor: "rgba(245,158,11,0.06)",
-//                 },
-//             ],
-//         },
-//         content: {
-//             title: "Content Volume",
-//             subtitle: "Posts and reels published per month",
-//             type: "bar",
-//             datasets: [
-//                 {
-//                     label: "FB Posts",
-//                     data: (monthly || []).map((m) => m.facebook?.posts ?? 0),
-//                     backgroundColor: "rgba(59,130,246,0.75)",
-//                     borderColor: "#3b82f6",
-//                     borderWidth: 1,
-//                     borderRadius: 4,
-//                 },
-//                 {
-//                     label: "IG Posts",
-//                     data: (monthly || []).map((m) => m.instagram?.posts ?? 0),
-//                     backgroundColor: "rgba(217,70,239,0.75)",
-//                     borderColor: "#d946ef",
-//                     borderWidth: 1,
-//                     borderRadius: 4,
-//                 },
-//                 {
-//                     label: "IG Reels",
-//                     data: (monthly || []).map((m) => m.instagram?.reels ?? 0),
-//                     backgroundColor: "rgba(245,158,11,0.75)",
-//                     borderColor: "#f59e0b",
-//                     borderWidth: 1,
-//                     borderRadius: 4,
-//                 },
-//             ],
-//         },
-//         reels: {
-//             title: "Reels Performance",
-//             subtitle: "Saves and total watch time per month",
-//             type: "line",
-//             // FIX: dual-axis needs yAxisID declared on dataset
-//             hasY1: true,
-//             datasets: [
-//                 {
-//                     label: "IG Saves",
-//                     data: (monthly || []).map((m) => m.instagram?.saves ?? 0),
-//                     borderColor: "#10b981",
-//                     backgroundColor: "rgba(16,185,129,0.08)",
-//                     borderWidth: 2.5,
-//                     pointRadius: 4,
-//                     tension: 0.4,
-//                     fill: true,
-//                     borderDash: [],
-//                     yAxisID: "y",
-//                 },
-//                 {
-//                     label: "Watch Time (hrs)",
-//                     data: (monthly || []).map((m) =>
-//                         // FIX: convert to hours for the right axis so scale is readable
-//                         m.instagram?.totalWatchTimeSec
-//                             ? Math.round((m.instagram.totalWatchTimeSec / 3600) * 10) / 10
-//                             : 0
-//                     ),
-//                     borderColor: "#f59e0b",
-//                     backgroundColor: "rgba(245,158,11,0.06)",
-//                     borderWidth: 2,
-//                     pointRadius: 4,
-//                     tension: 0.4,
-//                     fill: false,
-//                     borderDash: [6, 3],
-//                     yAxisID: "y1",
-//                 },
-//             ],
-//         },
-//     };
-
-//     // Load Chart.js once, then set ready
-//     useEffect(() => {
-//         if (typeof window === "undefined") return;
-//         if (window.Chart) { setChartReady(true); return; }
-//         const s = document.createElement("script");
-//         s.src = "https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js";
-//         s.onload = () => setChartReady(true);
-//         s.onerror = () => console.error("Chart.js failed to load");
-//         document.head.appendChild(s);
-//     }, []);
-
-//     // Re-render chart whenever metric or data changes
-//     useEffect(() => {
-//         if (!chartReady || !canvasRef.current || !monthly?.length) return;
-
-//         // Always destroy existing instance before creating a new one
-//         // FIX: was creating duplicate charts on metric switch
-//         if (chartInstance.current) {
-//             chartInstance.current.destroy();
-//             chartInstance.current = null;
-//         }
-
-//         const cfg = CHART_CONFIG[activeMetric];
-//         const isBar = cfg.type === "bar";
-
-//         chartInstance.current = new window.Chart(canvasRef.current, {
-//             type: cfg.type,
-//             data: { labels: months, datasets: cfg.datasets },
-//             options: {
-//                 responsive: true,
-//                 maintainAspectRatio: false,
-//                 interaction: { mode: "index", intersect: false },
-//                 plugins: {
-//                     legend: { display: false },
-//                     tooltip: {
-//                         backgroundColor: "#1e1b4b",
-//                         titleColor: "#e0e7ff",
-//                         bodyColor: "#c7d2fe",
-//                         padding: 12,
-//                         cornerRadius: 8,
-//                         callbacks: {
-//                             label: (ctx) => {
-//                                 if (ctx.dataset.label?.includes("Watch Time")) {
-//                                     return ` Watch Time: ${ctx.raw}h`;
-//                                 }
-//                                 return ` ${ctx.dataset.label}: ${Number(ctx.raw).toLocaleString("en-IN")}`;
-//                             },
-//                         },
-//                     },
-//                 },
-//                 scales: {
-//                     x: {
-//                         grid: { color: "rgba(0,0,0,0.04)" },
-//                         ticks: { color: "#9ca3af", font: { size: 11 }, maxRotation: 45 },
-//                     },
-//                     y: {
-//                         position: "left",
-//                         grid: { color: "rgba(0,0,0,0.04)" },
-//                         beginAtZero: true,
-//                         ticks: {
-//                             color: "#9ca3af",
-//                             font: { size: 11 },
-//                             callback: (v) => {
-//                                 if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M`;
-//                                 if (v >= 1_000) return `${(v / 1_000).toFixed(0)}K`;
-//                                 return v;
-//                             },
-//                         },
-//                     },
-//                     // FIX: y1 scale only registered when the chart actually needs it
-//                     ...(cfg.hasY1 ? {
-//                         y1: {
-//                             position: "right",
-//                             grid: { drawOnChartArea: false },
-//                             beginAtZero: true,
-//                             ticks: {
-//                                 color: "#f59e0b",
-//                                 font: { size: 11 },
-//                                 callback: (v) => `${v}h`,
-//                             },
-//                         },
-//                     } : {}),
-//                 },
-//                 ...(isBar ? { barPercentage: 0.6, categoryPercentage: 0.8 } : {}),
-//             },
-//         });
-
-//         return () => {
-//             if (chartInstance.current) {
-//                 chartInstance.current.destroy();
-//                 chartInstance.current = null;
-//             }
-//         };
-//     }, [activeMetric, monthly, chartReady]);
-
-//     if (!monthly?.length) return null;
-
-//     const tabs = [
-//         { key: "engagement", label: "Engagement", icon: "📈" },
-//         { key: "reach", label: "Reach & Views", icon: "📡" },
-//         { key: "content", label: "Content Volume", icon: "📦" },
-//         { key: "reels", label: "Reels", icon: "🎬" },
-//     ];
-
-//     const cfg = CHART_CONFIG[activeMetric];
-
-//     return (
-//         <div>
-//             <SectionTitle>📊 Analytics Charts</SectionTitle>
-
-//             {/* Tab switcher */}
-//             <div className="flex gap-2 flex-wrap mb-5">
-//                 {tabs.map((tab) => (
-//                     <button
-//                         key={tab.key}
-//                         onClick={() => setActiveMetric(tab.key)}
-//                         className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold transition-all ${activeMetric === tab.key
-//                                 ? "bg-indigo-600 text-white shadow"
-//                                 : "bg-white border border-gray-200 text-gray-500 hover:border-indigo-300 hover:text-indigo-600"
-//                             }`}
-//                     >
-//                         <span style={{ fontSize: 14 }}>{tab.icon}</span>
-//                         {tab.label}
-//                     </button>
-//                 ))}
-//             </div>
-
-//             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
-//                 {/* Header + legend */}
-//                 <div className="flex flex-wrap items-start justify-between gap-3 mb-5">
-//                     <div>
-//                         <p className="font-bold text-gray-800 text-base">{cfg.title}</p>
-//                         <p className="text-xs text-gray-400 mt-0.5">{cfg.subtitle}</p>
-//                     </div>
-//                     <div className="flex flex-wrap gap-4">
-//                         {cfg.datasets.map((ds) => (
-//                             <div key={ds.label} className="flex items-center gap-2 text-xs text-gray-500">
-//                                 <span
-//                                     className="inline-block w-4 h-0.5 flex-shrink-0"
-//                                     style={{
-//                                         background: ds.borderColor || ds.backgroundColor,
-//                                         borderTop: ds.borderDash?.length
-//                                             ? `2px dashed ${ds.borderColor}`
-//                                             : `2px solid ${ds.borderColor}`,
-//                                         height: 0,
-//                                     }}
-//                                 />
-//                                 <span className="font-medium">{ds.label}</span>
-//                             </div>
-//                         ))}
-//                     </div>
-//                 </div>
-
-//                 {/* Single canvas — FIX: was using multiple canvas refs with same chart */}
-//                 <div style={{ position: "relative", height: 300 }}>
-//                     <canvas ref={canvasRef} />
-//                 </div>
-
-//                 <QuickInsights monthly={monthly} metric={activeMetric} />
-//             </div>
-//         </div>
-//     );
-// }
-
-// function QuickInsights({ monthly, metric }) {
-//     if (!monthly?.length) return null;
-//     const insights = [];
-
-//     if (metric === "engagement") {
-//         const fbTotal = monthly.reduce((s, m) => s + (m.facebook?.engagement ?? 0), 0);
-//         const igTotal = monthly.reduce((s, m) => s + (m.instagram?.engagement ?? 0), 0);
-//         const best = [...monthly].sort(
-//             (a, b) =>
-//                 (b.facebook?.engagement ?? 0) + (b.instagram?.engagement ?? 0) -
-//                 ((a.facebook?.engagement ?? 0) + (a.instagram?.engagement ?? 0))
-//         )[0];
-//         insights.push(
-//             { label: "FB Total Engagement", value: fmt(fbTotal), color: "text-blue-600" },
-//             { label: "IG Total Engagement", value: fmt(igTotal), color: "text-fuchsia-600" },
-//             { label: "Best Month", value: best?.month, color: "text-indigo-600" }
-//         );
-//     } else if (metric === "reach") {
-//         const fbReach = monthly.reduce((s, m) => s + (m.facebook?.reach ?? 0), 0);
-//         const igReach = monthly.reduce((s, m) => s + (m.instagram?.reach ?? 0), 0);
-//         const igViews = monthly.reduce((s, m) => s + (m.instagram?.views ?? 0), 0);
-//         insights.push(
-//             { label: "Total FB Reach", value: fmt(fbReach), color: "text-blue-600" },
-//             { label: "Total IG Reach", value: fmt(igReach), color: "text-fuchsia-600" },
-//             { label: "Total IG Views", value: fmt(igViews), color: "text-amber-600" }
-//         );
-//     } else if (metric === "content") {
-//         const fbPosts = monthly.reduce((s, m) => s + (m.facebook?.posts ?? 0), 0);
-//         const igPosts = monthly.reduce((s, m) => s + (m.instagram?.posts ?? 0), 0);
-//         const igReels = monthly.reduce((s, m) => s + (m.instagram?.reels ?? 0), 0);
-//         insights.push(
-//             { label: "Total FB Posts", value: fbPosts, color: "text-blue-600" },
-//             { label: "Total IG Posts", value: igPosts, color: "text-fuchsia-600" },
-//             { label: "Total IG Reels", value: igReels, color: "text-amber-600" }
-//         );
-//     } else if (metric === "reels") {
-//         const totalSaves = monthly.reduce((s, m) => s + (m.instagram?.saves ?? 0), 0);
-//         const totalWatch = monthly.reduce((s, m) => s + (m.instagram?.totalWatchTimeSec ?? 0), 0);
-//         const bestSaveMonth = [...monthly].sort((a, b) => (b.instagram?.saves ?? 0) - (a.instagram?.saves ?? 0))[0];
-//         insights.push(
-//             { label: "Total IG Saves", value: fmt(totalSaves), color: "text-emerald-600" },
-//             { label: "Total Watch Time", value: fmtSec(totalWatch), color: "text-amber-600" },
-//             { label: "Best Save Month", value: bestSaveMonth?.month, color: "text-indigo-600" }
-//         );
-//     }
-
-//     return (
-//         <div className="mt-5 pt-4 border-t border-gray-100 flex flex-wrap gap-6">
-//             {insights.map((ins) => (
-//                 <div key={ins.label}>
-//                     <p className="text-[10px] text-gray-400 uppercase tracking-widest">{ins.label}</p>
-//                     <p className={`text-base font-bold mt-0.5 ${ins.color}`}>{ins.value}</p>
-//                 </div>
-//             ))}
-//         </div>
-//     );
-// }
-
-// /* ─────────────────────────────────────────────────────────────
-//    MAIN PAGE
-// ───────────────────────────────────────────────────────────── */
-// export default function AccountDetails() {
-//     const { id } = useParams();
-//     const searchParams = useSearchParams();
-//     // FIX: support both ?token= and ?access_token= param names
-//     const pageToken = searchParams.get("token") || searchParams.get("access_token");
-
-//     const [loading, setLoading] = useState(true);
-//     const [error, setError] = useState(null);
-//     const [dashboard, setDashboard] = useState(null);
-//     const [allComments, setAllComments] = useState([]);
-//     const [loadingComments, setLoadingComments] = useState(false);
-//     const [selectedPost, setSelectedPost] = useState(null);
-//     const [activeTab, setActiveTab] = useState("all");
-//     // FIX: add search/filter for All Content section
-//     const [contentSearch, setContentSearch] = useState("");
-//     const [sortBy, setSortBy] = useState("score");
-
-//     // FIX: show a clear error when token is missing — was silently doing nothing
-//     useEffect(() => {
-//         if (!id || !pageToken) {
-//             setLoading(false);
-//             setError("Missing page ID or access token. Add ?token=PAGE_TOKEN to the URL.");
-//             return;
-//         }
-
-//         (async () => {
-//             try {
-//                 setLoading(true);
-//                 setError(null);
-//                 const res = await API.get(`/facebook/dashboard/${id}`, {
-//                     params: { access_token: pageToken },
-//                 });
-//                 setDashboard(res.data);
-//             } catch (err) {
-//                 const msg = err.response?.data?.error || err.message || "Failed to load dashboard";
-//                 setError(msg);
-//                 console.error("Dashboard fetch error:", err);
-//             } finally {
-//                 setLoading(false);
-//             }
-//         })();
-//     }, [id, pageToken]);
-
-//     useEffect(() => {
-//         if (!id || !pageToken) return;
-//         (async () => {
-//             try {
-//                 setLoadingComments(true);
-//                 const res = await API.get(`/facebook/comments/${id}`, {
-//                     params: { access_token: pageToken },
-//                 });
-//                 const posts = res.data?.data || [];
-//                 const flat = [];
-//                 posts.forEach((post) => {
-//                     const postId = post.postId || post.mediaId;
-//                     (post.comments || []).forEach((c) => {
-//                         flat.push({
-//                             platform: post.platform,
-//                             postId,
-//                             message: post.message || post.caption || "",
-//                             username: c.username || c.from?.name || "Unknown",
-//                             // FIX: IG uses c.text, FB uses c.message — handle both
-//                             text: c.text || c.message || "",
-//                             timestamp: c.timestamp || c.created_time || "",
-//                         });
-//                     });
-//                 });
-//                 setAllComments(flat);
-//             } catch (err) {
-//                 console.error("Comments fetch error:", err);
-//             } finally {
-//                 setLoadingComments(false);
-//             }
-//         })();
-//     }, [id, pageToken]);
-
-//     if (loading) return <Loader />;
-//     if (error) return <ErrorScreen message={error} />;
-//     if (!dashboard) return <Empty />;
-
-//     const {
-//         page, summary, instagram, facebook,
-//         bestOverall, globalBest, bestByCategory, igBest,
-//         monthly, data: allContent = [],
-//     } = dashboard;
-
-//     const fbPosts = allContent.filter((p) => p.platform === "facebook");
-//     const igPosts = allContent.filter((p) => p.platform === "instagram");
-
-//     // FIX: filter + sort logic was missing — previously showed unsorted raw array
-//     const baseList =
-//         activeTab === "facebook" ? fbPosts :
-//             activeTab === "instagram" ? igPosts :
-//                 allContent;
-
-//     const filteredContent = baseList
-//         .filter((p) => {
-//             if (!contentSearch) return true;
-//             const q = contentSearch.toLowerCase();
-//             return (
-//                 (p.message || "").toLowerCase().includes(q) ||
-//                 p.type?.includes(q) ||
-//                 p.platform?.includes(q)
-//             );
-//         })
-//         .sort((a, b) => {
-//             if (sortBy === "score") return (b.score || 0) - (a.score || 0);
-//             if (sortBy === "likes") return (b.likes || 0) - (a.likes || 0);
-//             if (sortBy === "views") return (b.views || 0) - (a.views || 0);
-//             if (sortBy === "date") return new Date(b.created_time) - new Date(a.created_time);
-//             if (sortBy === "comments") return (b.comments || 0) - (a.comments || 0);
-//             return 0;
-//         });
-
-//     const topContent = [
-//         { label: "🏆 Best overall", post: globalBest || bestOverall },
-//         { label: "📘 Best FB post", post: bestByCategory?.post },
-//         { label: "📹 Best FB reel", post: bestByCategory?.reel },
-//         { label: "📷 Best IG post", post: igBest?.post },
-//         { label: "🎬 Best IG reel", post: igBest?.reel },
-//         { label: "⏱ Most watched reel", post: igBest?.mostWatched },
-//     ].filter((i) => i.post);
-
-//     return (
-//         <div className="min-h-screen bg-[#f5f5f0] font-['DM_Sans',sans-serif]">
-//             <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Syne:wght@700;800&display=swap" rel="stylesheet" />
-
-//             {/* ── NAV ── */}
-//             <div className="sticky top-0 z-40 bg-white/80 backdrop-blur border-b border-gray-200 px-6 py-3 flex items-center gap-3">
-//                 <div className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse" />
-//                 <span className="text-sm font-semibold text-gray-600 tracking-wide uppercase">{page.name}</span>
-//                 {/* FIX: show cache indicator so user knows when data is fresh */}
-//                 {dashboard.fromCache && (
-//                     <span className="ml-2 text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-semibold">
-//                         Cached
-//                     </span>
-//                 )}
-//                 <span className="ml-auto text-xs text-gray-400">Social Dashboard</span>
-//             </div>
-
-//             <div className="max-w-7xl mx-auto px-4 md:px-8 py-8 space-y-10">
-
-//                 {/* ── HERO ── */}
-//                 <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-indigo-600 via-violet-600 to-fuchsia-600 p-8 text-white">
-//                     <div className="absolute inset-0 opacity-10" style={{
-//                         backgroundImage: "radial-gradient(circle at 20% 50%, white 1px, transparent 1px), radial-gradient(circle at 80% 20%, white 1px, transparent 1px)",
-//                         backgroundSize: "30px 30px",
-//                     }} />
-//                     <h1 className="font-['Syne'] text-4xl md:text-5xl font-extrabold mb-6 relative">{page.name}</h1>
-//                     <div className="flex flex-wrap gap-8 relative">
-//                         <HeroStat label="FB Followers" value={fmt(page.followers)} icon="👥" />
-//                         {instagram?.profile && <>
-//                             <HeroStat label="IG Followers" value={fmt(instagram.profile.followers_count)} icon="📷" />
-//                             <HeroStat label="IG Media" value={fmt(instagram.profile.media_count)} icon="🗂" />
-//                         </>}
-//                         <HeroStat label="Total Content" value={fmt(summary?.totalContent)} icon="📦" />
-//                         <HeroStat label="Total Reach" value={fmt(summary?.totalReach)} icon="📡" />
-//                     </div>
-//                 </div>
-
-//                 {/* ── SUMMARY CARDS ── */}
-//                 <div>
-//                     <SectionTitle>📊 Overall Performance</SectionTitle>
-//                     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-//                         <StatCard label="Likes" value={fmt(summary?.totalLikes)} color="text-rose-600" />
-//                         <StatCard label="Comments" value={fmt(summary?.totalComments)} color="text-indigo-600" />
-//                         <StatCard label="Shares" value={fmt(summary?.totalShares)} color="text-sky-600" />
-//                         <StatCard label="Saves" value={fmt(summary?.totalSaves)} color="text-emerald-600" />
-//                         <StatCard label="Total Reach" value={fmt(summary?.totalReach)} color="text-violet-600" />
-//                         <StatCard label="Total Views" value={fmt(summary?.totalViews)} color="text-orange-600" />
-//                         <StatCard label="Engagement" value={fmt(summary?.totalEngagement)} color="text-pink-600" />
-//                         <StatCard label="FB Content" value={fmt(summary?.facebookContent)} color="text-blue-600" />
-//                         <StatCard label="IG Content" value={fmt(summary?.instagramContent)} color="text-fuchsia-600" />
-//                     </div>
-//                 </div>
-
-//                 {/* ── IG REELS SUMMARY ── */}
-//                 {/* FIX: was using summary.reels.count but backend returns summary.reels.ig.count */}
-//                 {summary?.reels?.ig?.count > 0 && (
-//                     <div>
-//                         <SectionTitle>🎬 Instagram Reels Insights</SectionTitle>
-//                         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-//                             <StatCard label="Total IG Reels" value={summary.reels.ig.count} color="text-amber-600" />
-//                             <StatCard label="Avg Watch Time" value={`${summary.reels.ig.avgWatchTimeSec ?? 0}s`} color="text-indigo-600" />
-//                             <StatCard label="Total Watch Time" value={fmtHMS(summary.reels.ig.totalWatchTimeSec)} color="text-violet-600" />
-//                             {summary.reels.ig.avgSkipRatePct && (
-//                                 <StatCard label="Avg Skip Rate" value={summary.reels.ig.avgSkipRatePct} color="text-rose-600" />
-//                             )}
-//                             {summary.reels.fb?.count > 0 && (
-//                                 <StatCard label="Total FB Reels" value={summary.reels.fb.count} color="text-blue-600" />
-//                             )}
-//                             {summary.reels.fb?.avgWatchTimeSec > 0 && (
-//                                 <StatCard label="FB Avg Watch Time" value={`${summary.reels.fb.avgWatchTimeSec}s`} color="text-sky-600" />
-//                             )}
-//                         </div>
-//                     </div>
-//                 )}
-
-//                 {/* ── MONTHLY TABLE ── */}
-//                 <div>
-//                     <SectionTitle>📅 Monthly Breakdown</SectionTitle>
-//                     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-//                         <div className="overflow-x-auto max-h-[420px] overflow-y-auto">
-//                             <table className="w-full text-sm min-w-[900px]">
-//                                 <thead className="sticky top-0 bg-gray-50 border-b border-gray-200 z-10">
-//                                     <tr>
-//                                         {["Month", "FB Posts", "FB Likes", "FB Reach", "FB Eng", "IG Posts", "IG Reels", "IG Likes", "IG Views", "IG Reach", "IG Saves", "IG Watch Time", "Total Eng"].map((h, i) => (
-//                                             <th key={h} className={`px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap ${i === 0 ? "text-left" : "text-right"}`}>
-//                                                 {h}
-//                                             </th>
-//                                         ))}
-//                                     </tr>
-//                                 </thead>
-//                                 <tbody className="divide-y divide-gray-50">
-//                                     {[...(monthly || [])].reverse().map((m, i) => (
-//                                         <tr key={i} className="hover:bg-gray-50/60 transition-colors">
-//                                             <td className="px-4 py-3 font-semibold text-gray-800 whitespace-nowrap">{m.month}</td>
-//                                             <td className="px-4 py-3 text-right text-gray-700">{m.facebook?.posts ?? 0}</td>
-//                                             <td className="px-4 py-3 text-right text-gray-700">{fmt(m.facebook?.likes)}</td>
-//                                             <td className="px-4 py-3 text-right text-gray-700">{fmt(m.facebook?.reach)}</td>
-//                                             <td className="px-4 py-3 text-right font-medium text-blue-600">{fmt(m.facebook?.engagement)}</td>
-//                                             <td className="px-4 py-3 text-right text-gray-700">{m.instagram?.posts ?? 0}</td>
-//                                             <td className="px-4 py-3 text-right text-gray-700">{m.instagram?.reels ?? 0}</td>
-//                                             <td className="px-4 py-3 text-right text-gray-700">{fmt(m.instagram?.likes)}</td>
-//                                             <td className="px-4 py-3 text-right text-gray-700">{fmt(m.instagram?.views)}</td>
-//                                             <td className="px-4 py-3 text-right text-gray-700">{fmt(m.instagram?.reach)}</td>
-//                                             <td className="px-4 py-3 text-right text-gray-700">{fmt(m.instagram?.saves)}</td>
-//                                             <td className="px-4 py-3 text-right text-gray-700">{fmtHMS(m.instagram?.totalWatchTimeSec)}</td>
-//                                             <td className="px-4 py-3 text-right font-bold text-indigo-600">
-//                                                 {fmt((m.facebook?.engagement ?? 0) + (m.instagram?.engagement ?? 0))}
-//                                             </td>
-//                                         </tr>
-//                                     ))}
-//                                 </tbody>
-//                             </table>
-//                         </div>
-//                     </div>
-//                 </div>
-
-//                 {/* ── ANALYTICS CHARTS ── */}
-//                 <AnalyticsCharts monthly={monthly} />
-
-//                 {/* ── TOP PERFORMING ── */}
-//                 {topContent.length > 0 && (
-//                     <div>
-//                         <SectionTitle>🏆 Top Performing Content</SectionTitle>
-//                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
-//                             {topContent.map((item, i) => (
-//                                 <PostCard key={i} post={item.post} label={item.label} onClick={setSelectedPost} />
-//                             ))}
-//                         </div>
-//                     </div>
-//                 )}
-
-//                 {/* ── ALL CONTENT ── */}
-//                 <div>
-//                     <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
-//                         <SectionTitle className="mb-0">📁 All Content ({fmt(filteredContent.length)} / {fmt(allContent.length)})</SectionTitle>
-//                         <div className="flex gap-2 bg-white border border-gray-200 rounded-xl p-1">
-//                             {[
-//                                 { key: "all", label: `All (${allContent.length})` },
-//                                 { key: "facebook", label: `FB (${fbPosts.length})` },
-//                                 { key: "instagram", label: `IG (${igPosts.length})` },
-//                             ].map((tab) => (
-//                                 <button
-//                                     key={tab.key}
-//                                     onClick={() => setActiveTab(tab.key)}
-//                                     className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${activeTab === tab.key
-//                                             ? "bg-indigo-600 text-white shadow-sm"
-//                                             : "text-gray-500 hover:text-gray-800"
-//                                         }`}
-//                                 >
-//                                     {tab.label}
-//                                 </button>
-//                             ))}
-//                         </div>
-//                     </div>
-
-//                     {/* Search + Sort bar — FIX: was completely missing */}
-//                     <div className="flex gap-3 mb-4 flex-wrap">
-//                         <input
-//                             type="text"
-//                             placeholder="Search by caption, type, platform…"
-//                             value={contentSearch}
-//                             onChange={(e) => setContentSearch(e.target.value)}
-//                             className="flex-1 min-w-[200px] px-4 py-2 rounded-xl border border-gray-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300"
-//                         />
-//                         <select
-//                             value={sortBy}
-//                             onChange={(e) => setSortBy(e.target.value)}
-//                             className="px-4 py-2 rounded-xl border border-gray-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300"
-//                         >
-//                             <option value="score">Sort: Score</option>
-//                             <option value="likes">Sort: Likes</option>
-//                             <option value="views">Sort: Views</option>
-//                             <option value="comments">Sort: Comments</option>
-//                             <option value="date">Sort: Date</option>
-//                         </select>
-//                     </div>
-
-//                     {filteredContent.length === 0 ? (
-//                         <div className="bg-white rounded-2xl p-10 text-center text-gray-400 text-sm border border-gray-100">
-//                             No content matches your filter
-//                         </div>
-//                     ) : (
-//                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 max-h-[800px] overflow-y-auto pr-2 rounded-xl">
-//                             {filteredContent.map((post, i) => (
-//                                 <PostCard
-//                                     key={`${post.platform}-${post.id}-${i}`}
-//                                     post={post}
-//                                     onClick={setSelectedPost}
-//                                 />
-//                             ))}
-//                         </div>
-//                     )}
-//                 </div>
-
-//                 {/* ── COMMENTS TABLE ── */}
-//                 <div>
-//                     <SectionTitle>💬 All Comments ({fmt(allComments.length)})</SectionTitle>
-//                     {loadingComments ? (
-//                         <div className="bg-white rounded-2xl p-10 text-center text-gray-400 text-sm border border-gray-100">
-//                             Loading comments…
-//                         </div>
-//                     ) : allComments.length === 0 ? (
-//                         <div className="bg-white rounded-2xl p-10 text-center text-gray-400 text-sm border border-gray-100">
-//                             No comments found
-//                         </div>
-//                     ) : (
-//                         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-//                             <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
-//                                 <table className="w-full text-sm min-w-[800px]">
-//                                     <thead className="sticky top-0 bg-gray-50 border-b border-gray-200 z-10">
-//                                         <tr>
-//                                             {["Platform", "Post ID", "Username", "Comment", "Date"].map((h) => (
-//                                                 <th key={h} className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider text-left">
-//                                                     {h}
-//                                                 </th>
-//                                             ))}
-//                                         </tr>
-//                                     </thead>
-//                                     <tbody className="divide-y divide-gray-50">
-//                                         {allComments.map((c, i) => {
-//                                             const pc = PLATFORM_COLORS[c.platform] || PLATFORM_COLORS.facebook;
-//                                             return (
-//                                                 <tr key={i} className="hover:bg-gray-50/60 transition-colors">
-//                                                     <td className="px-4 py-3">
-//                                                         <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full ${pc.bg} ${pc.text}`}>
-//                                                             <span className={`w-1.5 h-1.5 rounded-full ${pc.dot}`} />
-//                                                             {c.platform}
-//                                                         </span>
-//                                                     </td>
-//                                                     <td className="px-4 py-3 text-xs text-gray-400 font-mono">{c.postId}</td>
-//                                                     <td className="px-4 py-3 font-semibold text-gray-800">{c.username}</td>
-//                                                     <td className="px-4 py-3 text-gray-600 max-w-xs truncate" title={c.text}>{c.text || "—"}</td>
-//                                                     <td className="px-4 py-3 text-xs text-gray-400 whitespace-nowrap">
-//                                                         {c.timestamp
-//                                                             ? new Date(c.timestamp).toLocaleString("en-IN", {
-//                                                                 day: "2-digit", month: "short", year: "numeric",
-//                                                                 hour: "2-digit", minute: "2-digit",
-//                                                             })
-//                                                             : "—"}
-//                                                     </td>
-//                                                 </tr>
-//                                             );
-//                                         })}
-//                                     </tbody>
-//                                 </table>
-//                             </div>
-//                         </div>
-//                     )}
-//                 </div>
-//             </div>
-
-//             {selectedPost && <PostModal post={selectedPost} onClose={() => setSelectedPost(null)} />}
-//         </div>
-//     );
-// }
-
-// /* ─────────────────────────────────────────────────────────────
-//    POST CARD
-// ───────────────────────────────────────────────────────────── */
-// function PostCard({ post, label, onClick }) {
-//     if (!post) return null;
-//     const isVideo = ["reel", "video"].includes(post.type);
-//     const pc = PLATFORM_COLORS[post.platform] || PLATFORM_COLORS.facebook;
-//     const tc = TYPE_COLORS[post.type] || TYPE_COLORS.post;
-
-//     // FIX: thumbnail fallback — use graph.facebook.com picture only for FB videos
-//     const mediaUrl =
-//         post.image ||
-//         post.media_url ||
-//         (post.platform === "facebook" && isVideo
-//             ? `https://graph.facebook.com/${post.id}/picture?type=large`
-//             : null);
-
-//     const date = post.created_time
-//         ? new Date(post.created_time).toLocaleDateString("en-IN", {
-//             day: "2-digit", month: "short", year: "numeric",
-//         })
-//         : "";
-
-//     return (
-//         <div
-//             onClick={() => onClick(post)}
-//             className="group bg-white rounded-2xl border border-gray-100 hover:border-indigo-200 hover:shadow-lg transition-all duration-200 cursor-pointer overflow-hidden flex flex-col"
-//         >
-//             {/* Thumbnail */}
-//             <div className="relative aspect-[4/3] bg-gray-900 overflow-hidden flex-shrink-0">
-//                 {mediaUrl ? (
-//                     <img
-//                         src={mediaUrl} alt=""
-//                         className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-//                         onError={(e) => { e.target.style.display = "none"; }}
-//                     />
-//                 ) : (
-//                     <div className="flex h-full items-center justify-center text-gray-600 text-xs">No media</div>
-//                 )}
-//                 {isVideo && (
-//                     <div className="absolute inset-0 bg-black/30 flex items-center justify-center">
-//                         <div className="w-10 h-10 bg-white/90 rounded-full flex items-center justify-center shadow-md">
-//                             <span className="text-red-500 text-lg ml-0.5">▶</span>
-//                         </div>
-//                     </div>
-//                 )}
-//                 {post.score > 0 && (
-//                     <div className="absolute top-2 right-2 bg-black/70 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
-//                         ⭐ {fmt(post.score)}
-//                     </div>
-//                 )}
-//             </div>
-
-//             {/* Body */}
-//             <div className="p-4 flex flex-col flex-1 gap-2">
-//                 {label && <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{label}</p>}
-//                 <div className="flex gap-1.5 flex-wrap">
-//                     <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${pc.bg} ${pc.text}`}>{post.platform}</span>
-//                     <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full capitalize ${tc.bg} ${tc.text}`}>{post.type}</span>
-//                 </div>
-//                 <p className="text-xs text-gray-500 line-clamp-2 flex-1 leading-relaxed">
-//                     {post.message || "No caption"}
-//                 </p>
-//                 <div className="grid grid-cols-4 gap-1 text-center">
-//                     <MiniStat icon="👍" value={fmt(post.likes)} label="Likes" />
-//                     <MiniStat icon="💬" value={fmt(post.comments)} label="Comments" />
-//                     <MiniStat icon="🔁" value={fmt(post.shares)} label="Shares" />
-//                     <MiniStat icon="🔖" value={fmt(post.saves)} label="Saves" />
-//                 </div>
-//                 {(post.views > 0 || post.reach > 0) && (
-//                     <div className="grid grid-cols-2 gap-1 text-center">
-//                         {post.views > 0 && <MiniStat icon="👁" value={fmt(post.views)} label="Views" />}
-//                         {post.reach > 0 && <MiniStat icon="📡" value={fmt(post.reach)} label="Reach" />}
-//                     </div>
-//                 )}
-//                 {post.type === "reel" && (
-//                     <div className="grid grid-cols-3 gap-1 text-center bg-amber-50 rounded-xl p-2">
-//                         {post.avgWatchTimeSec != null && (
-//                             <MiniStat icon="⏱" value={`${post.avgWatchTimeSec}s`} label="Avg Watch" amber />
-//                         )}
-//                         {/* FIX: skipRatePct may not exist after restricted metrics removal */}
-//                         {post.skipRatePct && (
-//                             <MiniStat icon="⏩" value={post.skipRatePct} label="Skip Rate" amber />
-//                         )}
-//                         {post.completionRate != null && (
-//                             <MiniStat icon="✅" value={`${post.completionRate}%`} label="Completion" amber />
-//                         )}
-//                     </div>
-//                 )}
-//                 <div className="text-[10px] text-gray-400 pt-1 border-t border-gray-100">{date}</div>
-//             </div>
-//         </div>
-//     );
-// }
-
-// /* ─────────────────────────────────────────────────────────────
-//    POST MODAL
-// ───────────────────────────────────────────────────────────── */
-// function PostModal({ post, onClose }) {
-//     const isVideo = ["reel", "video"].includes(post.type);
-//     const pc = PLATFORM_COLORS[post.platform] || PLATFORM_COLORS.facebook;
-//     const tc = TYPE_COLORS[post.type] || TYPE_COLORS.post;
-
-//     useEffect(() => {
-//         const h = (e) => { if (e.key === "Escape") onClose(); };
-//         document.addEventListener("keydown", h);
-//         return () => document.removeEventListener("keydown", h);
-//     }, [onClose]);
-
-//     const engagementStats = [
-//         { label: "Likes", value: fmt(post.likes), icon: "👍" },
-//         { label: "Comments", value: fmt(post.comments), icon: "💬" },
-//         { label: "Shares", value: fmt(post.shares), icon: "🔁" },
-//         { label: "Saves", value: fmt(post.saves), icon: "🔖" },
-//         ...(post.views > 0 ? [{ label: "Views", value: fmt(post.views), icon: "👁" }] : []),
-//         ...(post.reach > 0 ? [{ label: "Reach", value: fmt(post.reach), icon: "📡" }] : []),
-//         ...(post.engagement > 0 ? [{ label: "Engagement", value: fmt(post.engagement), icon: "📈" }] : []),
-//         ...(post.score > 0 ? [{ label: "Score", value: fmt(post.score), icon: "⭐" }] : []),
-//     ];
-
-//     const reelStats = post.type === "reel" ? [
-//         ...(post.avgWatchTimeSec != null ? [{ label: "Avg Watch Time", value: `${post.avgWatchTimeSec}s`, icon: "⏱" }] : []),
-//         ...(post.totalWatchTimeSec > 0 ? [{ label: "Total Watch Time", value: fmtSec(post.totalWatchTimeSec), icon: "📺" }] : []),
-//         ...(post.skipRatePct ? [{ label: "Skip Rate", value: post.skipRatePct, icon: "⏩" }] : []),
-//         ...(post.completionRate != null ? [{ label: "Completion Rate", value: `${post.completionRate}%`, icon: "✅" }] : []),
-//         ...(post.approxDurationSec > 0 ? [{ label: "Est. Duration", value: `${post.approxDurationSec}s`, icon: "🎞" }] : []),
-//     ] : [];
-
-//     const igPostStats = (post.platform === "instagram" && post.type === "post") ? [
-//         ...(post.follows > 0 ? [{ label: "New Follows", value: fmt(post.follows), icon: "➕" }] : []),
-//         ...(post.profileVisits > 0 ? [{ label: "Profile Visits", value: fmt(post.profileVisits), icon: "🏠" }] : []),
-//     ] : [];
-
-//     return (
-//         <div
-//             className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4"
-//             onClick={onClose}
-//         >
-//             <div
-//                 className="bg-white rounded-3xl w-full max-w-2xl max-h-[92vh] overflow-hidden flex flex-col shadow-2xl"
-//                 onClick={(e) => e.stopPropagation()}
-//             >
-//                 {/* Media */}
-//                 <div className="relative bg-gray-900 flex-shrink-0 flex items-center justify-center" style={{ maxHeight: "50vh" }}>
-//                     {isVideo ? (
-//                         // FIX: video src should be post.image (source url), not always available for FB
-//                         <video
-//                             src={post.image || undefined}
-//                             controls
-//                             autoPlay
-//                             className="w-full max-h-[50vh] object-contain"
-//                         />
-//                     ) : (post.image || post.media_url) ? (
-//                         <img
-//                             src={post.image || post.media_url}
-//                             alt=""
-//                             className="w-full max-h-[50vh] object-contain"
-//                         />
-//                     ) : (
-//                         <div className="py-16 text-gray-500 text-sm">No media available</div>
-//                     )}
-//                     <button
-//                         onClick={onClose}
-//                         className="absolute top-3 right-3 bg-white/90 hover:bg-white text-gray-700 text-xs font-semibold px-3 py-1.5 rounded-xl shadow transition"
-//                     >
-//                         ✕ Close
-//                     </button>
-//                 </div>
-
-//                 <div className="p-6 overflow-y-auto flex-1 space-y-5">
-//                     <div className="flex gap-2 flex-wrap items-center">
-//                         <span className={`text-xs font-bold px-3 py-1 rounded-full ${pc.bg} ${pc.text}`}>{post.platform}</span>
-//                         <span className={`text-xs font-bold px-3 py-1 rounded-full capitalize ${tc.bg} ${tc.text}`}>{post.type}</span>
-//                         {post.score > 0 && (
-//                             <span className="text-xs font-bold px-3 py-1 rounded-full bg-yellow-50 text-yellow-700">
-//                                 ⭐ Score: {fmt(post.score)}
-//                             </span>
-//                         )}
-//                     </div>
-
-//                     {post.message && <p className="text-gray-700 text-sm leading-relaxed">{post.message}</p>}
-
-//                     <div>
-//                         <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Engagement</p>
-//                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-//                             {engagementStats.map((s) => (
-//                                 <div key={s.label} className="bg-gray-50 rounded-xl p-3 text-center">
-//                                     <p className="text-lg mb-0.5">{s.icon}</p>
-//                                     <p className="text-lg font-bold text-gray-800">{s.value}</p>
-//                                     <p className="text-[10px] text-gray-400 uppercase tracking-wide">{s.label}</p>
-//                                 </div>
-//                             ))}
-//                         </div>
-//                     </div>
-
-//                     {reelStats.length > 0 && (
-//                         <div>
-//                             <p className="text-xs font-bold text-amber-600 uppercase tracking-widest mb-3">Reel Performance</p>
-//                             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-//                                 {reelStats.map((s) => (
-//                                     <div key={s.label} className="bg-amber-50 rounded-xl p-3 text-center border border-amber-100">
-//                                         <p className="text-lg mb-0.5">{s.icon}</p>
-//                                         <p className="text-lg font-bold text-amber-800">{s.value}</p>
-//                                         <p className="text-[10px] text-amber-600 uppercase tracking-wide">{s.label}</p>
-//                                     </div>
-//                                 ))}
-//                             </div>
-//                         </div>
-//                     )}
-
-//                     {igPostStats.length > 0 && (
-//                         <div>
-//                             <p className="text-xs font-bold text-fuchsia-600 uppercase tracking-widest mb-3">Profile Actions</p>
-//                             <div className="grid grid-cols-2 gap-3">
-//                                 {igPostStats.map((s) => (
-//                                     <div key={s.label} className="bg-fuchsia-50 rounded-xl p-3 text-center border border-fuchsia-100">
-//                                         <p className="text-lg mb-0.5">{s.icon}</p>
-//                                         <p className="text-lg font-bold text-fuchsia-800">{s.value}</p>
-//                                         <p className="text-[10px] text-fuchsia-600 uppercase tracking-wide">{s.label}</p>
-//                                     </div>
-//                                 ))}
-//                             </div>
-//                         </div>
-//                     )}
-
-//                     {post.created_time && (
-//                         <p className="text-xs text-gray-400 text-right">
-//                             Posted: {new Date(post.created_time).toLocaleString("en-IN")}
-//                         </p>
-//                     )}
-//                 </div>
-//             </div>
-//         </div>
-//     );
-// }
-
-// /* ─────────────────────────────────────────────────────────────
-//    ATOMS
-// ───────────────────────────────────────────────────────────── */
-// const HeroStat = ({ label, value, icon }) => (
-//     <div className="text-center">
-//         <p className="text-white/60 text-xs uppercase tracking-widest mb-1">{icon} {label}</p>
-//         <p className="text-3xl font-bold font-['Syne']">{value}</p>
-//     </div>
-// );
-
-// const SectionTitle = ({ children, className = "" }) => (
-//     <h2 className={`text-lg font-bold text-gray-800 mb-4 ${className}`}>{children}</h2>
-// );
-
-// const StatCard = ({ label, value, color = "text-gray-800" }) => (
-//     <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 text-center hover:shadow-md transition-shadow">
-//         <p className={`text-2xl font-bold ${color}`}>{value}</p>
-//         <p className="text-[10px] text-gray-400 uppercase tracking-wider mt-1">{label}</p>
-//     </div>
-// );
-
-// const MiniStat = ({ icon, value, label, amber }) => (
-//     <div className="text-center">
-//         <p className="text-[10px] text-gray-400">{icon}</p>
-//         <p className={`text-[11px] font-bold ${amber ? "text-amber-700" : "text-gray-700"}`}>{value ?? "—"}</p>
-//         <p className="text-[9px] text-gray-400">{label}</p>
-//     </div>
-// );
-
-// const Loader = () => (
-//     <div className="min-h-screen flex items-center justify-center bg-gray-50">
-//         <div className="text-center space-y-4">
-//             <div className="w-12 h-12 rounded-full border-4 border-indigo-200 border-t-indigo-600 animate-spin mx-auto" />
-//             <p className="text-gray-400 text-sm">Loading dashboard…</p>
-//         </div>
-//     </div>
-// );
-
-// const Empty = () => (
-//     <div className="min-h-screen flex items-center justify-center bg-gray-50">
-//         <p className="text-gray-400">No data available</p>
-//     </div>
-// );
-
-// // FIX: was missing — errors were silently swallowed with no UI feedback
-// const ErrorScreen = ({ message }) => (
-//     <div className="min-h-screen flex items-center justify-center bg-gray-50 p-8">
-//         <div className="bg-white rounded-2xl border border-red-100 shadow-sm p-8 max-w-md text-center space-y-3">
-//             <p className="text-3xl">⚠️</p>
-//             <p className="font-bold text-gray-800">Something went wrong</p>
-//             <p className="text-sm text-red-600 bg-red-50 rounded-xl px-4 py-3">{message}</p>
-//             <p className="text-xs text-gray-400">Check the URL has a valid <code className="bg-gray-100 px-1 rounded">?token=</code> param and the page ID is correct.</p>
-//         </div>
-//     </div>
-// );
+/* ════════════════════════════════════════════════════
+   COMMENT DETAIL MODAL
+════════════════════════════════════════════════════ */
+function CommentDetailModal({ comment, onClose }) {
+    const handleCopy = () => {
+        navigator.clipboard.writeText(comment.text || "");
+        alert("Comment copied!");
+    };
+
+    return (
+        <div
+            className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+            onClick={onClose}
+        >
+            <div
+                className="bg-white rounded-2xl w-full max-w-2xl max-h-[80vh] overflow-hidden flex flex-col shadow-xl"
+                onClick={(e) => e.stopPropagation()}
+            >
+                {/* Header */}
+                <div className={`px-6 py-4 border-b border-gray-200 ${comment.platform === "facebook"
+                        ? "bg-blue-50"
+                        : "bg-pink-50"
+                    }`}>
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <p className="font-bold text-gray-900">
+                                {comment.username || "Anonymous"}
+                            </p>
+                            <p className="text-xs text-gray-500 mt-1">
+                                {comment.timestamp
+                                    ? new Date(comment.timestamp).toLocaleString("en-IN", {
+                                        day: "2-digit",
+                                        month: "short",
+                                        year: "numeric",
+                                        hour: "2-digit",
+                                        minute: "2-digit"
+                                    })
+                                    : "No date"
+                                }
+                            </p>
+                        </div>
+                        <span className={`px-3 py-1 rounded-full text-xs font-bold ${comment.platform === "facebook"
+                                ? "bg-blue-100 text-blue-700"
+                                : "bg-pink-100 text-pink-700"
+                            }`}>
+                            {comment.platform}
+                        </span>
+                    </div>
+                </div>
+
+                {/* Content */}
+                <div className="p-6 overflow-y-auto flex-1">
+                    {/* Post ID */}
+                    <div className="mb-4 pb-4 border-b border-gray-100">
+                        <p className="text-xs font-semibold text-gray-500 uppercase mb-1">Post ID</p>
+                        <p className="text-sm font-mono text-gray-600">{comment.postId || "N/A"}</p>
+                    </div>
+
+                    {/* Full comment */}
+                    <div>
+                        <p className="text-xs font-semibold text-gray-500 uppercase mb-3">Comment</p>
+                        <div className="bg-gray-50 rounded-lg p-4 border border-gray-100">
+                            <p className="text-sm leading-relaxed text-gray-800 whitespace-pre-wrap break-words">
+                                {comment.text || "No text"}
+                            </p>
+                        </div>
+                    </div>
+
+                    {/* Stats */}
+                    <div className="mt-4 pt-4 border-t border-gray-100">
+                        <p className="text-xs text-gray-500">
+                            {comment.text?.length || 0} characters • {comment.text?.split(" ").filter(w => w).length || 0} words
+                        </p>
+                    </div>
+                </div>
+
+                {/* Footer */}
+                <div className="bg-gray-50 border-t border-gray-200 px-6 py-3 flex gap-2">
+                    <button
+                        onClick={onClose}
+                        className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 text-sm transition-colors"
+                    >
+                        Close
+                    </button>
+                    <button
+                        onClick={handleCopy}
+                        className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg font-semibold hover:bg-gray-100 text-sm transition-colors"
+                    >
+                        📋 Copy
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}
