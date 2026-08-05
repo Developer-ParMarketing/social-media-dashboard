@@ -506,19 +506,39 @@ export default function AccountDetails() {
 
     const handleSync = async () => {
         if (!id || !pageToken) return;
+
         try {
             setSyncing(true);
-            const res = await API.post(`/sync/${id}`, { access_token: pageToken });
-            setDashboard(res.data);
-            setLastSynced(res.data.syncedAt);
+
+            // Start background sync
+            await API.post(`/sync/${id}`, {
+                access_token: pageToken,
+            });
+
+            // Keep showing existing dashboard
+            // Poll every 5 seconds for updated data
+            const interval = setInterval(async () => {
+                try {
+                    const res = await API.get(`/sync/${id}`);
+
+                    if (res.data?.page) {
+                        setDashboard(res.data);
+                        setLastSynced(res.data.syncedAt);
+
+                        clearInterval(interval);
+                        setSyncing(false);
+                    }
+                } catch (err) {
+                    console.error(err);
+                }
+            }, 5000);
+
         } catch (err) {
-            console.error("Sync error:", err);
-            alert("Sync failed: " + (err.response?.data?.error || err.message));
-        } finally {
             setSyncing(false);
+
+            alert(err.response?.data?.error || err.message);
         }
     };
-
 
     useEffect(() => {
         if (!id || !pageToken) return;
@@ -527,7 +547,11 @@ export default function AccountDetails() {
                 setLoading(true);
                 // Try DB first
                 const res = await API.get(`/sync/${id}`);
-                setDashboard(res.data);
+
+                if (res.data?.page) {
+                    setDashboard(res.data);
+                    setLastSynced(res.data.syncedAt);
+                }
                 setLastSynced(res.data.syncedAt);
             } catch (err) {
                 // 404 = never synced — trigger first sync automatically
@@ -606,7 +630,10 @@ export default function AccountDetails() {
     // }, [id, pageToken]);
 
     if (loading) return <Loader />;
-    if (!dashboard) return <Empty />;
+
+    if (!dashboard || !dashboard.page) {
+        return <Loader />;
+    }
 
     const { page, summary, instagram, facebook, bestOverall, globalBest, bestByCategory, igBest, monthly, data: allContent } = dashboard;
 
@@ -1139,8 +1166,8 @@ function CommentDetailModal({ comment, onClose }) {
             >
                 {/* Header */}
                 <div className={`px-6 py-4 border-b border-gray-200 ${comment.platform === "facebook"
-                        ? "bg-blue-50"
-                        : "bg-pink-50"
+                    ? "bg-blue-50"
+                    : "bg-pink-50"
                     }`}>
                     <div className="flex items-center justify-between">
                         <div>
@@ -1161,8 +1188,8 @@ function CommentDetailModal({ comment, onClose }) {
                             </p>
                         </div>
                         <span className={`px-3 py-1 rounded-full text-xs font-bold ${comment.platform === "facebook"
-                                ? "bg-blue-100 text-blue-700"
-                                : "bg-pink-100 text-pink-700"
+                            ? "bg-blue-100 text-blue-700"
+                            : "bg-pink-100 text-pink-700"
                             }`}>
                             {comment.platform}
                         </span>

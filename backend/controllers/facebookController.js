@@ -1246,6 +1246,7 @@ exports.getDashboardData = async (pageId, access_token, since = null, until = nu
 
                     return {
                         id: item.id,
+                        mediaId: item.id,
                         message: item.caption || "",
                         image: item.media_url || null,
                         created_time: item.timestamp,
@@ -1278,6 +1279,7 @@ exports.getDashboardData = async (pageId, access_token, since = null, until = nu
 
                     return {
                         id: item.id,
+                        mediaId: item.id,
                         message: item.caption || "",
                         image: item.media_url || null,
                         created_time: item.timestamp,
@@ -1338,6 +1340,7 @@ exports.getDashboardData = async (pageId, access_token, since = null, until = nu
 
             return {
                 id: video.id,
+                mediaId: video.id,
                 message: video.description || "",
                 image: video.source || video.picture || null,
                 created_time: video.created_time,
@@ -1412,6 +1415,7 @@ exports.getDashboardData = async (pageId, access_token, since = null, until = nu
 
             return {
                 id: post.id,
+                mediaId: post.id,
                 message: post.message || "",
                 image: post.full_picture || null,
                 created_time: post.created_time,

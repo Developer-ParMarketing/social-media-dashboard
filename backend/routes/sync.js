@@ -171,83 +171,91 @@ async function syncComments(pageId, access_token, appsecret_proof) {
 router.post("/:pageId", async (req, res) => {
     const { pageId } = req.params;
     const { access_token } = req.body;
-    if (!access_token) return res.status(400).json({ error: "access_token required in body" });
+
+    if (!access_token) {
+        return res.status(400).json({ error: "access_token required in body" });
+    }
 
     try {
-        const appsecret_proof = generateProof(access_token);
-
-        // 1. Dashboard data
-        const dashboardData = await getDashboardData(pageId, access_token);
-
-        // 2. Upsert Page
-        await Page.findOneAndUpdate(
-            { pageId },
-            { pageId, name: dashboardData.page.name, followers: dashboardData.page.followers, accessToken: access_token, lastSynced: new Date() },
-            { upsert: true, new: true }
-        );
-
-        // 3. Upsert IG Profile
-        if (dashboardData.instagram?.profile) {
-            const igp = dashboardData.instagram.profile;
-            await IgProfile.findOneAndUpdate(
-                { pageId },
-                { pageId, igId: igp.id, username: igp.username, followers_count: igp.followers_count, media_count: igp.media_count, lastSynced: new Date() },
-                { upsert: true, new: true }
-            );
-        }
-
-        // 4. Upsert content
-        const allContent = dashboardData.data || [];
-        if (allContent.length) {
-            const bulkOps = allContent.map((item) => ({
-                updateOne: {
-                    filter: { pageId, contentId: item.id, platform: item.platform },
-                    update: { $set: { ...item, contentId: item.id, pageId, lastSynced: new Date() } },
-                    upsert: true,
-                },
-            }));
-            await Content.bulkWrite(bulkOps, { ordered: false });
-        }
-
-        // 5. Upsert monthly stats
-        const monthly = dashboardData.monthly || [];
-        if (monthly.length) {
-            const monthlyOps = monthly.map((m) => ({
-                updateOne: {
-                    filter: { pageId, month: m.month },
-                    update: { $set: { ...m, pageId, lastSynced: new Date() } },
-                    upsert: true,
-                },
-            }));
-            await MonthlyStats.bulkWrite(monthlyOps, { ordered: false });
-        }
-
-        // 6. Sync comments
-        const commentCount = await syncComments(pageId, access_token, appsecret_proof);
-
-        // ADD: read back from DB and include in response
-        const savedComments = await Comment.find({ pageId }).sort({ timestamp: -1 }).lean();
-        const flatComments = savedComments.map(c => ({
-            platform: c.platform,
-            postId: c.postId,
-            username: c.username,
-            text: c.text,
-            timestamp: c.timestamp,
-        }));
-
-        console.log(` POST sync returning ${flatComments.length} comments`);
-
-        return res.status(200).json({
+        // ✅ Return 202 immediately (don't wait for sync)
+        res.status(202).json({
             success: true,
-            syncedAt: new Date(),
-            contentSynced: allContent.length,
-            commentsSynced: commentCount,
-            comments: flatComments,    // ← THIS WAS MISSING
-            ...dashboardData,
+            message: "Sync started in background",
+            status: "processing",
+            pageId,
+        });
+
+        // ✅ Run everything in background without waiting
+        setImmediate(async () => {
+            try {
+                console.log(`\n🔄 SYNC START (background): ${pageId}`);
+                const startTime = Date.now();
+
+                const appsecret_proof = generateProof(access_token);
+
+                // 1. Dashboard data
+                const dashboardData = await getDashboardData(pageId, access_token);
+
+                // 2. Upsert Page
+                await Page.findOneAndUpdate(
+                    { pageId },
+                    { pageId, name: dashboardData.page.name, followers: dashboardData.page.followers, accessToken: access_token, lastSynced: new Date() },
+                    { upsert: true, new: true }
+                );
+
+                // 3. Upsert IG Profile
+                if (dashboardData.instagram?.profile) {
+                    const igp = dashboardData.instagram.profile;
+                    await IgProfile.findOneAndUpdate(
+                        { pageId },
+                        { pageId, igId: igp.id, username: igp.username, followers_count: igp.followers_count, media_count: igp.media_count, lastSynced: new Date() },
+                        { upsert: true, new: true }
+                    );
+                }
+
+                // 4. Upsert content
+                const allContent = dashboardData.data || [];
+                if (allContent.length) {
+                    const bulkOps = allContent.map((item) => ({
+                        updateOne: {
+                            filter: { pageId, contentId: item.id, platform: item.platform },
+                            update: { $set: { ...item, contentId: item.id, pageId, lastSynced: new Date() } },
+                            upsert: true,
+                        },
+                    }));
+                    await Content.bulkWrite(bulkOps, { ordered: false });
+                    console.log(`✅ Content saved: ${allContent.length} items`);
+                }
+
+                // 5. Upsert monthly stats
+                const monthly = dashboardData.monthly || [];
+                if (monthly.length) {
+                    const monthlyOps = monthly.map((m) => ({
+                        updateOne: {
+                            filter: { pageId, month: m.month },
+                            update: { $set: { ...m, pageId, lastSynced: new Date() } },
+                            upsert: true,
+                        },
+                    }));
+                    await MonthlyStats.bulkWrite(monthlyOps, { ordered: false });
+                }
+
+                // 6. Sync comments
+                const commentCount = await syncComments(pageId, access_token, appsecret_proof);
+                console.log(`✅ Comments synced: ${commentCount} items`);
+
+                const durationMs = Date.now() - startTime;
+                console.log(`✅ SYNC COMPLETE (background): ${pageId}`);
+                console.log(`   Duration: ${(durationMs / 1000).toFixed(1)}s`);
+
+            } catch (err) {
+                console.error(`\n❌ SYNC FAILED (background): ${pageId}`);
+                console.error(`   Error: ${err.message}`);
+            }
         });
 
     } catch (err) {
-        console.error(" Sync error:", err.message);
+        console.error("❌ Sync start error:", err.message);
         return res.status(500).json({ success: false, error: err.message });
     }
 });
