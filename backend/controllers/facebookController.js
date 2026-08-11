@@ -979,6 +979,37 @@ const parseFbNextUrl = (fullUrl) => {
     }
 };
 
+// const fetchAllPages = async (url, params) => {
+//     let results = [];
+//     let currentUrl = url;
+//     let currentParams = { ...params };
+//     const { access_token, appsecret_proof } = params;
+
+//     while (currentUrl) {
+//         try {
+//             const response = await fbClient.get(currentUrl, { params: currentParams });
+//             const data = response.data?.data || [];
+//             results = results.concat(data);
+
+//             const nextUrl = response.data?.paging?.next;
+//             if (nextUrl) {
+//                 const parsed = parseFbNextUrl(nextUrl);
+//                 if (!parsed) break;
+//                 currentUrl = parsed.path;
+//                 currentParams = { ...parsed.params, access_token, appsecret_proof };
+//             } else {
+//                 currentUrl = null;
+//             }
+//         } catch (err) {
+//             console.warn(`⚠️ fetchAllPages error on ${currentUrl}:`, err.response?.data?.error?.message || err.message);
+//             break;
+//         }
+//     }
+
+//     return results;
+// };
+
+
 const fetchAllPages = async (url, params) => {
     let results = [];
     let currentUrl = url;
@@ -986,29 +1017,42 @@ const fetchAllPages = async (url, params) => {
     const { access_token, appsecret_proof } = params;
 
     while (currentUrl) {
-        try {
-            const response = await fbClient.get(currentUrl, { params: currentParams });
-            const data = response.data?.data || [];
-            results = results.concat(data);
+        let response;
+        let attempt = 0;
 
-            const nextUrl = response.data?.paging?.next;
-            if (nextUrl) {
-                const parsed = parseFbNextUrl(nextUrl);
-                if (!parsed) break;
-                currentUrl = parsed.path;
-                currentParams = { ...parsed.params, access_token, appsecret_proof };
-            } else {
-                currentUrl = null;
+        while (true) {
+            try {
+                response = await fbClient.get(currentUrl, { params: currentParams });
+                break;
+            } catch (err) {
+                const isRateLimit = err.response?.data?.error?.code === 4 || err.response?.status === 429;
+                attempt++;
+                if (!isRateLimit || attempt > 3) {
+                    console.warn(`⚠️ fetchAllPages error on ${currentUrl}:`, err.response?.data?.error?.message || err.message);
+                    return results; // give up, but return what we have
+                }
+                const delay = 2000 * attempt;
+                console.warn(`⏳ Rate limited, retrying in ${delay}ms (attempt ${attempt}/3)`);
+                await new Promise((r) => setTimeout(r, delay));
             }
-        } catch (err) {
-            console.warn(`⚠️ fetchAllPages error on ${currentUrl}:`, err.response?.data?.error?.message || err.message);
-            break;
+        }
+
+        const data = response.data?.data || [];
+        results = results.concat(data);
+
+        const nextUrl = response.data?.paging?.next;
+        if (nextUrl) {
+            const parsed = parseFbNextUrl(nextUrl);
+            if (!parsed) break;
+            currentUrl = parsed.path;
+            currentParams = { ...parsed.params, access_token, appsecret_proof };
+        } else {
+            currentUrl = null;
         }
     }
 
     return results;
 };
-
 async function fetchIgReelInsights(itemId, commonParams) {
     const result = {
         views: 0, reach: 0,
@@ -1442,7 +1486,6 @@ exports.getDashboardData = async (pageId, access_token, since = null, until = nu
     // ── 5. DEDUPLICATE + COMBINE ──────────────────
     const fbContentRaw = [...filteredPosts, ...formattedVideos];
     const fbContent = [...new Map(fbContentRaw.map((item) => [item.id, item])).values()];
-
     const globalSeen = new Set();
     const allContent = [...fbContent, ...instagramFormatted].filter((item) => {
         const key = `${item.platform}::${item.id}`;
@@ -1451,8 +1494,10 @@ exports.getDashboardData = async (pageId, access_token, since = null, until = nu
         return true;
     });
 
-    console.log(`✅ Total content after dedup: ${allContent.length} (FB: ${fbContent.length}, IG: ${instagramFormatted.length})`);
+    // ✅ Count IG content AFTER dedup
+    const igContentAfterDedup = allContent.filter(item => item.platform === "instagram").length;
 
+    console.log(`✅ Total content after dedup: ${allContent.length} (FB: ${fbContent.length}, IG: ${igContentAfterDedup})`);
     // ── 6. BEST CONTENT PICKERS ───────────────────
     const bestByCategory = {
         post: getBest(fbContent.filter((x) => x.type === "post")),
@@ -1475,9 +1520,18 @@ exports.getDashboardData = async (pageId, access_token, since = null, until = nu
     };
 
     const globalBest = getBest(allContent);
+    // ✅ Count IG items AFTER all dedup
+    const igFinalCount = allContent.filter(item => item.platform === "instagram").length;
+    const fbFinalCount = allContent.filter(item => item.platform === "facebook").length;
+
+    console.log(`📊 FINAL COUNTS (after dedup):`);
+    console.log(`   IG: ${igFinalCount} (was ${instagramFormatted.length} before dedup)`);
+    console.log(`   FB: ${fbFinalCount} (was ${fbContent.length} before dedup)`);
+    console.log(`   Total: ${allContent.length}`);
 
     // ── 7. MONTHLY BREAKDOWN ──────────────────────
     const monthlyMap = {};
+
 
     allContent.forEach((item) => {
         if (!item.created_time) return;
@@ -1555,8 +1609,8 @@ exports.getDashboardData = async (pageId, access_token, since = null, until = nu
         },
         summary: {
             totalContent: allContent.length,
-            facebookContent: fbContent.length,
-            instagramContent: instagramFormatted.length,
+            facebookContent: fbFinalCount,
+            instagramContent: igFinalCount,
             totalLikes,
             totalComments,
             totalShares,

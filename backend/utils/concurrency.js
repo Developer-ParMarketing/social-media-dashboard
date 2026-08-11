@@ -7,41 +7,23 @@
  * @returns {Promise<array>} Results in same order as input
  */
 async function withConcurrencyLimit(tasks, maxConcurrent = 5) {
-    const results = new Array(tasks.length);
-    const executing = [];
-    let completed = 0;
+    const results = [];
+    let nextIndex = 0;
 
-    for (let i = 0; i < tasks.length; i++) {
-        // Create promise for this task
-        const promise = Promise.resolve().then(() => {
-            console.log(`🔄 Task ${i + 1}/${tasks.length} starting...`);
-            return tasks[i]();
-        }).then(
-            (result) => {
-                results[i] = result;
-                completed++;
-                console.log(`✅ Task ${i + 1}/${tasks.length} completed (${completed}/${tasks.length})`);
-                return result;
-            },
-            (error) => {
-                results[i] = Promise.reject(error);
-                completed++;
-                console.error(`❌ Task ${i + 1}/${tasks.length} failed:`, error.message);
-                return Promise.reject(error);
+    async function worker() {
+        while (nextIndex < tasks.length) {
+            const i = nextIndex++;
+            try {
+                const value = await tasks[i]();
+                if (value != null) results.push(value);
+            } catch (err) {
+                console.error(`❌ Task ${i + 1}/${tasks.length} failed:`, err.message);
             }
-        );
-
-        executing.push(promise);
-
-        // If we've queued up maxConcurrent tasks, wait for one to finish
-        if (executing.length >= maxConcurrent) {
-            await Promise.race(executing);
-            executing.splice(executing.findIndex(p => p === promise), 1);
         }
     }
 
-    // Wait for remaining tasks
-    await Promise.all(executing);
+    const workerCount = Math.min(maxConcurrent, tasks.length);
+    await Promise.all(Array.from({ length: workerCount }, worker));
 
     return results;
 }

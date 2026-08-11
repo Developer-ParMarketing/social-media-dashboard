@@ -503,6 +503,10 @@ export default function AccountDetails() {
     const [lastSynced, setLastSynced] = useState(null);
     const [expandedComment, setExpandedComment] = useState(null);
 
+    const [filters, setFilters] = useState({ platform: "all", type: "all", since: "", until: "" });
+    const [contentPage, setContentPage] = useState(1);
+    const [content, setContent] = useState({ data: [], pagination: { page: 1, totalPages: 1, total: 0 } });
+    const [contentLoading, setContentLoading] = useState(true);
 
     const handleSync = async () => {
         if (!id || !pageToken) return;
@@ -510,21 +514,20 @@ export default function AccountDetails() {
         try {
             setSyncing(true);
 
-            // Start background sync
+            // Start background sync (returns 202, ignore response)
             await API.post(`/sync/${id}`, {
                 access_token: pageToken,
             });
 
-            // Keep showing existing dashboard
-            // Poll every 5 seconds for updated data
+            // ✅ Poll for real data (don't use 202 response)
             const interval = setInterval(async () => {
                 try {
                     const res = await API.get(`/sync/${id}`);
 
+                    // Only set dashboard if it has real page data
                     if (res.data?.page) {
                         setDashboard(res.data);
                         setLastSynced(res.data.syncedAt);
-
                         clearInterval(interval);
                         setSyncing(false);
                     }
@@ -535,9 +538,32 @@ export default function AccountDetails() {
 
         } catch (err) {
             setSyncing(false);
-
             alert(err.response?.data?.error || err.message);
         }
+    };
+
+    useEffect(() => {
+        if (!id) return;
+        (async () => {
+            try {
+                setContentLoading(true);
+                const params = { page: contentPage, limit: 24, ...filters };
+                Object.keys(params).forEach((k) => {
+                    if (params[k] === "" || params[k] === "all") delete params[k];
+                });
+                const res = await API.get(`/sync/${id}/content`, { params });
+                setContent(res.data);
+            } catch (err) {
+                console.error(err);
+            } finally {
+                setContentLoading(false);
+            }
+        })();
+    }, [id, contentPage, filters]);
+
+    const updateFilter = (patch) => {
+        setContentPage(1);
+        setFilters((f) => ({ ...f, ...patch }));
     };
 
     useEffect(() => {
@@ -609,7 +635,7 @@ export default function AccountDetails() {
     //             const flat = [];
     //             posts.forEach((post) => {
     //                 const postId = post.postId || post.mediaId;
-    //                 (post.comments || []).forEach((c) => {
+    //                 (post.postComments || []).forEach((c) => {
     //                     flat.push({
     //                         platform: post.platform,
     //                         postId,
@@ -636,6 +662,9 @@ export default function AccountDetails() {
     }
 
     const { page, summary, instagram, facebook, bestOverall, globalBest, bestByCategory, igBest, monthly, data: allContent } = dashboard;
+    console.log('summary', summary);
+
+    const igActualCount = instagram?.data?.length || 0;
 
     const fbPosts = (allContent || []).filter((p) => p.platform === "facebook");
     const igPosts = (allContent || []).filter((p) => p.platform === "instagram");
@@ -702,9 +731,10 @@ export default function AccountDetails() {
                     <h1 className="font-['Syne'] text-4xl md:text-5xl font-extrabold mb-6 relative">{page.name}</h1>
                     <div className="flex flex-wrap gap-8 relative">
                         <HeroStat label="FB Followers" value={fmt(page.followers)} icon="👥" />
+                        <HeroStat label="FB Content" value={fmt(summary?.facebookContent)} icon="📘" />
                         {instagram?.profile && <>
                             <HeroStat label="IG Followers" value={fmt(instagram.profile.followers_count)} icon="📷" />
-                            <HeroStat label="IG Media" value={fmt(instagram.profile.media_count)} icon="🗂" />
+                            <HeroStat label="IG Media (Meta reported)" value={fmt(instagram.profile.media_count)} icon="🗂" />
                         </>}
                         <HeroStat label="Total Content" value={fmt(summary?.totalContent)} icon="📦" />
                     </div>
@@ -722,7 +752,7 @@ export default function AccountDetails() {
                         <StatCard label="Total Views" value={fmt(summary?.totalViews)} color="text-orange-600" />
                         <StatCard label="Engagement" value={fmt(summary?.totalEngagement)} color="text-pink-600" />
                         <StatCard label="FB Content" value={fmt(summary?.facebookContent)} color="text-blue-600" />
-                        <StatCard label="IG Content" value={fmt(summary?.instagramContent)} color="text-fuchsia-600" />
+                        <StatCard label="IG Content" value={fmt(igActualCount)} color="text-fuchsia-600" />
                     </div>
                 </div>
 
@@ -797,34 +827,75 @@ export default function AccountDetails() {
                     </div>
                 )}
 
-                {/* ── ALL CONTENT with tabs ── */}
+                {/* ── ALL CONTENT with filters + pagination ── */}
                 <div>
-                    <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
-                        <SectionTitle className="mb-0">📁 All Content ({fmt(allContent?.length)})</SectionTitle>
-                        <div className="flex gap-2 bg-white border border-gray-200 rounded-xl p-1">
-                            {[
-                                { key: "all", label: `All (${allContent?.length || 0})` },
-                                { key: "facebook", label: `FB (${fbPosts.length})` },
-                                { key: "instagram", label: `IG (${igPosts.length})` },
-                            ].map((tab) => (
+                    <SectionTitle>📁 All Content ({fmt(content.pagination.total)})</SectionTitle>
+
+                    <div className="flex flex-wrap items-center gap-3 mb-4 bg-white border border-gray-200 rounded-xl p-3">
+                        <div className="flex gap-1">
+                            {["all", "facebook", "instagram"].map((p) => (
                                 <button
-                                    key={tab.key}
-                                    onClick={() => setActiveTab(tab.key)}
-                                    className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${activeTab === tab.key
-                                        ? "bg-indigo-600 text-white shadow-sm"
-                                        : "text-gray-500 hover:text-gray-800"
-                                        }`}
+                                    key={p}
+                                    onClick={() => updateFilter({ platform: p })}
+                                    className={`px-3 py-1.5 rounded-lg text-sm font-medium ${filters.platform === p ? "bg-indigo-600 text-white" : "text-gray-500 hover:bg-gray-100"}`}
                                 >
-                                    {tab.label}
+                                    {p === "all" ? "All" : p === "facebook" ? "FB" : "IG"}
                                 </button>
                             ))}
                         </div>
+                        <select
+                            value={filters.type}
+                            onChange={(e) => updateFilter({ type: e.target.value })}
+                            className="text-sm border border-gray-200 rounded-lg px-2 py-1.5"
+                        >
+                            <option value="all">All types</option>
+                            <option value="post">Posts</option>
+                            <option value="reel">Reels</option>
+                            <option value="video">Videos</option>
+                        </select>
+                        <input type="date" value={filters.since} onChange={(e) => updateFilter({ since: e.target.value })} className="text-sm border border-gray-200 rounded-lg px-2 py-1.5" />
+                        <span className="text-gray-400 text-sm">to</span>
+                        <input type="date" value={filters.until} onChange={(e) => updateFilter({ until: e.target.value })} className="text-sm border border-gray-200 rounded-lg px-2 py-1.5" />
+                        {(filters.platform !== "all" || filters.type !== "all" || filters.since || filters.until) && (
+                            <button onClick={() => updateFilter({ platform: "all", type: "all", since: "", until: "" })} className="text-xs text-gray-400 underline">
+                                Clear filters
+                            </button>
+                        )}
                     </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 max-h-[800px] overflow-y-auto pr-2 rounded-xl">
-                        {filteredPosts?.map((post, i) => (
-                            <PostCard key={`${post.platform}-${post.id}-${i}`} post={post} onClick={setSelectedPost} />
-                        ))}
-                    </div>
+
+                    {contentLoading ? (
+                        <div className="bg-white rounded-xl p-8 text-center text-gray-400 text-sm border border-gray-100">
+                            Loading content…
+                        </div>
+                    ) : (
+                        <>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+                                {content.data.map((post, i) => (
+                                    <PostCard key={`${post.platform}-${post.id}-${i}`} post={post} onClick={setSelectedPost} />
+                                ))}
+                            </div>
+
+                            <div className="flex items-center justify-center gap-3 mt-6">
+                                <button
+                                    disabled={contentPage <= 1}
+                                    onClick={() => setContentPage((p) => p - 1)}
+                                    className="px-4 py-2 rounded-lg border border-gray-200 text-sm font-medium disabled:opacity-40"
+                                >
+                                    ← Prev
+                                </button>
+                                <span className="text-sm text-gray-500">
+                                    Page {content.pagination.page} of {content.pagination.totalPages} ({content.pagination.total} items)
+                                </span>
+                                <button
+                                    disabled={contentPage >= content.pagination.totalPages}
+                                    onClick={() => setContentPage((p) => p + 1)}
+                                    className="px-4 py-2 rounded-lg border border-gray-200 text-sm font-medium disabled:opacity-40"
+                                >
+                                    Next →
+                                </button>
+                            </div>
+                        </>
+                    )}
                 </div>
 
 
@@ -958,7 +1029,7 @@ function PostCard({ post, label, onClick }) {
                 </p>
                 <div className="grid grid-cols-4 gap-1 text-center">
                     <MiniStat icon="👍" value={fmt(post.likes)} label="Likes" />
-                    <MiniStat icon="💬" value={fmt(post.comments)} label="Comments" />
+                    <MiniStat icon="💬" value={fmt(post.postComments)} label="Comments" />
                     <MiniStat icon="🔁" value={fmt(post.shares)} label="Shares" />
                     <MiniStat icon="🔖" value={fmt(post.saves)} label="Saves" />
                 </div>
@@ -997,7 +1068,7 @@ function PostModal({ post, onClose }) {
 
     const engagementStats = [
         { label: "Likes", value: fmt(post.likes), icon: "👍" },
-        { label: "Comments", value: fmt(post.comments), icon: "💬" },
+        { label: "Comments", value: fmt(post.postComments), icon: "💬" },
         { label: "Shares", value: fmt(post.shares), icon: "🔁" },
         { label: "Saves", value: fmt(post.saves), icon: "🔖" },
         ...(post.views > 0 ? [{ label: "Views", value: fmt(post.views), icon: "👁" }] : []),

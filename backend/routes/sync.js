@@ -362,4 +362,67 @@ router.get("/:pageId", async (req, res) => {
     }
 });
 
+
+// GET /api/sync/:pageId/content
+// ?page=1&limit=24&platform=all|facebook|instagram&type=all|post|reel|video&since=YYYY-MM-DD&until=YYYY-MM-DD
+router.get("/:pageId/content", async (req, res) => {
+    const { pageId } = req.params;
+    let { page = 1, limit = 24, platform = "all", type = "all", since, until } = req.query;
+
+    page = Math.max(1, parseInt(page));
+    limit = Math.min(100, Math.max(1, parseInt(limit)));
+
+    try {
+        const query = { pageId };
+        if (platform !== "all") query.platform = platform;
+        if (type !== "all") query.type = type;
+        if (since || until) {
+            query.created_time = {};
+            if (since) query.created_time.$gte = new Date(since);
+            if (until) query.created_time.$lte = new Date(`${until}T23:59:59`);
+        }
+
+        const [items, total] = await Promise.all([
+            Content.find(query)
+                .sort({ created_time: -1 })
+                .skip((page - 1) * limit)
+                .limit(limit)
+                .lean(),
+            Content.countDocuments(query),
+        ]);
+
+        // pull only the comments relevant to this page of posts
+        const postIds = items.map((i) => i.contentId);
+        const comments = postIds.length
+            ? await Comment.find({ pageId, postId: { $in: postIds } }).sort({ timestamp: -1 }).lean()
+            : [];
+
+        const commentsByPost = {};
+        for (const c of comments) {
+            (commentsByPost[c.postId] ||= []).push({
+                platform: c.platform,
+                username: c.username,
+                text: c.text,
+                timestamp: c.timestamp,
+            });
+        }
+
+        const data = items.map((i) => ({
+            ...i,
+            id: i.contentId,
+            postComments: commentsByPost[i.contentId] || [],
+            commentCount: (commentsByPost[i.contentId] || []).length,
+        }));
+
+        res.json({
+            success: true,
+            data,
+            pagination: { page, limit, total, totalPages: Math.ceil(total / limit) || 1 },
+        });
+    } catch (err) {
+        console.error("content list error:", err.message);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
 module.exports = router;

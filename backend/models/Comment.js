@@ -18,5 +18,5 @@ const CommentSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 CommentSchema.index({ pageId: 1, commentId: 1, platform: 1 }, { unique: true });
-
+CommentSchema.index({ pageId: 1, postId: 1 });
 module.exports = mongoose.model("Comment", CommentSchema);
