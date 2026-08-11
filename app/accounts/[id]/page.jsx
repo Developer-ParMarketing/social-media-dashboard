@@ -1029,7 +1029,7 @@ function PostCard({ post, label, onClick }) {
                 </p>
                 <div className="grid grid-cols-4 gap-1 text-center">
                     <MiniStat icon="👍" value={fmt(post.likes)} label="Likes" />
-                    <MiniStat icon="💬" value={fmt(post.postComments)} label="Comments" />
+                    <MiniStat icon="💬" value={fmt(post.commentCount ?? post.comments)} label="Comments" />
                     <MiniStat icon="🔁" value={fmt(post.shares)} label="Shares" />
                     <MiniStat icon="🔖" value={fmt(post.saves)} label="Saves" />
                 </div>
@@ -1059,6 +1059,10 @@ function PostModal({ post, onClose }) {
     const isVideo = ["reel", "video"].includes(post.type);
     const pc = PLATFORM_COLORS[post.platform] || PLATFORM_COLORS.facebook;
     const tc = TYPE_COLORS[post.type] || TYPE_COLORS.post;
+    const commentsRef = useRef(null);
+    const scrollToComments = () => {
+        commentsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    };
 
     useEffect(() => {
         const h = (e) => { if (e.key === "Escape") onClose(); };
@@ -1068,7 +1072,7 @@ function PostModal({ post, onClose }) {
 
     const engagementStats = [
         { label: "Likes", value: fmt(post.likes), icon: "👍" },
-        { label: "Comments", value: fmt(post.postComments), icon: "💬" },
+        { label: "Comments", value: fmt(post.commentCount ?? post.comments), icon: "💬" },
         { label: "Shares", value: fmt(post.shares), icon: "🔁" },
         { label: "Saves", value: fmt(post.saves), icon: "🔖" },
         ...(post.views > 0 ? [{ label: "Views", value: fmt(post.views), icon: "👁" }] : []),
@@ -1120,13 +1124,25 @@ function PostModal({ post, onClose }) {
                     <div>
                         <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Engagement</p>
                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                            {engagementStats.map((s) => (
-                                <div key={s.label} className="bg-gray-50 rounded-xl p-3 text-center">
-                                    <p className="text-lg mb-0.5">{s.icon}</p>
-                                    <p className="text-lg font-bold text-gray-800">{s.value}</p>
-                                    <p className="text-[10px] text-gray-400 uppercase tracking-wide">{s.label}</p>
-                                </div>
-                            ))}
+                            {engagementStats.map((s) =>
+                                s.label === "Comments" ? (
+                                    <button
+                                        key={s.label}
+                                        onClick={scrollToComments}
+                                        className="bg-gray-50 rounded-xl p-3 text-center hover:bg-indigo-50 hover:ring-1 hover:ring-indigo-200 transition-colors cursor-pointer"
+                                    >
+                                        <p className="text-lg mb-0.5">{s.icon}</p>
+                                        <p className="text-lg font-bold text-gray-800">{s.value}</p>
+                                        <p className="text-[10px] text-gray-400 uppercase tracking-wide">{s.label}</p>
+                                    </button>
+                                ) : (
+                                    <div key={s.label} className="bg-gray-50 rounded-xl p-3 text-center">
+                                        <p className="text-lg mb-0.5">{s.icon}</p>
+                                        <p className="text-lg font-bold text-gray-800">{s.value}</p>
+                                        <p className="text-[10px] text-gray-400 uppercase tracking-wide">{s.label}</p>
+                                    </div>
+                                )
+                            )}
                         </div>
                     </div>
                     {reelStats.length > 0 && (
@@ -1143,6 +1159,35 @@ function PostModal({ post, onClose }) {
                             </div>
                         </div>
                     )}
+                    <div ref={commentsRef}>
+                        <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">
+                            Comments ({post.postComments?.length ?? post.commentCount ?? 0})
+                        </p>
+
+                        {post.postComments === undefined ? (
+                            <div className="bg-gray-50 rounded-lg p-4 text-center text-sm text-gray-400 border border-gray-100">
+                                Comments aren't loaded for this card yet — open it from "All Content" below to see them.
+                            </div>
+                        ) : post.postComments.length === 0 ? (
+                            <div className="bg-gray-50 rounded-lg p-4 text-center text-sm text-gray-400 border border-gray-100">
+                                No comments on this post yet.
+                            </div>
+                        ) : (
+                            <div className="space-y-2 max-h-64 overflow-y-auto">
+                                {post.postComments.map((c, i) => (
+                                    <div key={i} className="bg-gray-50 rounded-lg p-3 border border-gray-100">
+                                        <div className="flex justify-between mb-1">
+                                            <span className="text-sm font-semibold text-gray-800">{c.username || "Anonymous"}</span>
+                                            <span className="text-[10px] text-gray-400">
+                                                {c.timestamp ? new Date(c.timestamp).toLocaleDateString("en-IN") : ""}
+                                            </span>
+                                        </div>
+                                        <p className="text-sm text-gray-600">{c.text}</p>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
                     {igPostStats.length > 0 && (
                         <div>
                             <p className="text-xs font-bold text-fuchsia-600 uppercase tracking-widest mb-3">Profile Actions</p>
