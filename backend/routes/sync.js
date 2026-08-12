@@ -270,12 +270,93 @@ router.get("/:pageId", async (req, res) => {
         const page = await Page.findOne({ pageId });
         if (!page) return res.status(404).json({ error: "Page not found. Run a sync first." });
 
-        const [igProfile, allContent, monthly, allComments] = await Promise.all([
+        // const [igProfile, allContent, monthly, allComments] = await Promise.all([
+        //     IgProfile.findOne({ pageId }),
+        //     Content.find({ pageId }).sort({ created_time: -1 }).lean(),
+        //     MonthlyStats.find({ pageId }).sort({ month: 1 }).lean(),
+        //     Comment.find({ pageId }).sort({ timestamp: -1 }).lean(),  // ← NEW
+        // ]);
+
+        // const fbContent = allContent.filter(c => c.platform === "facebook");
+        // const igContent = allContent.filter(c => c.platform === "instagram");
+        // const sum = (arr, key) => arr.reduce((s, i) => s + (i[key] || 0), 0);
+        // const igReels = igContent.filter(c => c.type === "reel");
+
+        // const summary = {
+        //     totalContent: allContent.length,
+        //     facebookContent: fbContent.length,
+        //     instagramContent: igContent.length,
+        //     totalLikes: sum(allContent, "likes"),
+        //     totalComments: sum(allContent, "comments"),
+        //     totalShares: sum(allContent, "shares"),
+        //     totalSaves: sum(allContent, "saves"),
+        //     totalViews: sum(allContent, "views"),
+        //     totalEngagement: sum(allContent, "engagement"),
+        //     totalReach: sum(allContent, "reach"),
+        //     reels: {
+        //         ig: {
+        //             count: igReels.length,
+        //             totalWatchTimeSec: sum(igReels, "totalWatchTimeSec"),
+        //             totalWatchTimeMin: Math.round(sum(igReels, "totalWatchTimeSec") / 60),
+        //             avgWatchTimeSec: igReels.length ? Math.round(sum(igReels, "avgWatchTimeSec") / igReels.length * 10) / 10 : 0,
+        //             avgSkipRatePct: "0%",
+        //         },
+        //     },
+        // };
+
+        // const getBest = (arr) => arr.length ? [...arr].sort((a, b) => b.score - a.score)[0] : null;
+
+        // // ← Flatten comments to match the shape the frontend expects
+        // const flatComments = allComments.map(c => ({
+        //     platform: c.platform,
+        //     postId: c.postId,
+        //     username: c.username,
+        //     text: c.text,
+        //     timestamp: c.timestamp,
+        // }));
+
+
+        const [igProfile, allContentRaw, monthly, allComments] = await Promise.all([
             IgProfile.findOne({ pageId }),
             Content.find({ pageId }).sort({ created_time: -1 }).lean(),
             MonthlyStats.find({ pageId }).sort({ month: 1 }).lean(),
-            Comment.find({ pageId }).sort({ timestamp: -1 }).lean(),  // ← NEW
+            Comment.find({ pageId }).sort({ timestamp: -1 }).lean(),
         ]);
+
+        // Flatten top-level comments AND their nested replies into one list —
+        // this becomes the single source of truth for both the comment feed
+        // and the "total comments" stat, so they can never disagree.
+        const flatComments = [];
+        for (const c of allComments) {
+            flatComments.push({
+                platform: c.platform,
+                postId: c.postId,
+                username: c.username,
+                text: c.text,
+                timestamp: c.timestamp,
+            });
+            for (const r of (c.replies || [])) {
+                flatComments.push({
+                    platform: c.platform,
+                    postId: c.postId,
+                    username: r.username || r.from?.name || "Unknown",
+                    text: r.text || r.message || "",
+                    timestamp: r.timestamp || r.created_time,
+                });
+            }
+        }
+
+        // Group by post so we can attach real comments to every content item
+        // (fixes "Top Performing Content" showing no comments)
+        const commentsByPost = {};
+        for (const c of flatComments) {
+            (commentsByPost[c.postId] ||= []).push(c);
+        }
+        const allContent = allContentRaw.map((c) => ({
+            ...c,
+            postComments: commentsByPost[c.contentId] || [],
+            commentCount: (commentsByPost[c.contentId] || []).length,
+        }));
 
         const fbContent = allContent.filter(c => c.platform === "facebook");
         const igContent = allContent.filter(c => c.platform === "instagram");
@@ -287,7 +368,7 @@ router.get("/:pageId", async (req, res) => {
             facebookContent: fbContent.length,
             instagramContent: igContent.length,
             totalLikes: sum(allContent, "likes"),
-            totalComments: sum(allContent, "comments"),
+            totalComments: flatComments.length,   // ← now matches the Comments list exactly
             totalShares: sum(allContent, "shares"),
             totalSaves: sum(allContent, "saves"),
             totalViews: sum(allContent, "views"),
@@ -306,14 +387,6 @@ router.get("/:pageId", async (req, res) => {
 
         const getBest = (arr) => arr.length ? [...arr].sort((a, b) => b.score - a.score)[0] : null;
 
-        // ← Flatten comments to match the shape the frontend expects
-        const flatComments = allComments.map(c => ({
-            platform: c.platform,
-            postId: c.postId,
-            username: c.username,
-            text: c.text,
-            timestamp: c.timestamp,
-        }));
 
         return res.status(200).json({
             success: true,

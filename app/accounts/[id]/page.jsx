@@ -547,7 +547,7 @@ export default function AccountDetails() {
         (async () => {
             try {
                 setContentLoading(true);
-                const params = { page: contentPage, limit: 24, ...filters };
+                const params = { page: contentPage, limit: 10, ...filters };
                 Object.keys(params).forEach((k) => {
                     if (params[k] === "" || params[k] === "all") delete params[k];
                 });
@@ -793,6 +793,25 @@ export default function AccountDetails() {
                                             </td>
                                         </tr>
                                     ))}
+                                    <tr className="bg-gray-50 font-bold border-t-2 border-gray-200">
+                                        <td className="px-4 py-3 text-gray-800">Total</td>
+                                        <td className="px-4 py-3 text-right">{(monthly || []).reduce((s, m) => s + (m.facebook?.posts ?? 0), 0)}</td>
+                                        <td className="px-4 py-3 text-right">{fmt((monthly || []).reduce((s, m) => s + (m.facebook?.likes ?? 0), 0))}</td>
+                                        <td className="px-4 py-3 text-right">{fmt((monthly || []).reduce((s, m) => s + (m.facebook?.reach ?? 0), 0))}</td>
+                                        <td className="px-4 py-3 text-right text-blue-600">{fmt((monthly || []).reduce((s, m) => s + (m.facebook?.engagement ?? 0), 0))}</td>
+                                        <td className="px-4 py-3 text-right">{(monthly || []).reduce((s, m) => s + (m.instagram?.posts ?? 0), 0)}</td>
+                                        <td className="px-4 py-3 text-right">{(monthly || []).reduce((s, m) => s + (m.instagram?.reels ?? 0), 0)}</td>
+                                        <td className="px-4 py-3 text-right">{fmt((monthly || []).reduce((s, m) => s + (m.instagram?.likes ?? 0), 0))}</td>
+                                        <td className="px-4 py-3 text-right">{fmt((monthly || []).reduce((s, m) => s + (m.instagram?.views ?? 0), 0))}</td>
+                                        <td className="px-4 py-3 text-right">{fmt((monthly || []).reduce((s, m) => s + (m.instagram?.reach ?? 0), 0))}</td>
+                                        <td className="px-4 py-3 text-right">{fmt((monthly || []).reduce((s, m) => s + (m.instagram?.saves ?? 0), 0))}</td>
+                                        <td className="px-4 py-3 text-right">
+                                            {fmtHMS((monthly || []).reduce((s, m) => s + (m.instagram?.totalWatchTimeSec ?? 0), 0))}
+                                        </td>
+                                        <td className="px-4 py-3 text-right text-indigo-600">
+                                            {fmt((monthly || []).reduce((s, m) => s + (m.facebook?.engagement ?? 0) + (m.instagram?.engagement ?? 0), 0))}
+                                        </td>
+                                    </tr>
                                 </tbody>
                             </table>
                         </div>
@@ -853,6 +872,28 @@ export default function AccountDetails() {
                             <option value="reel">Reels</option>
                             <option value="video">Videos</option>
                         </select>
+                        <div className="flex gap-1">
+                            <button
+                                onClick={() => {
+                                    const until = new Date().toISOString().slice(0, 10);
+                                    const since = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
+                                    updateFilter({ since, until });
+                                }}
+                                className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-500 hover:bg-gray-100 border border-gray-200"
+                            >
+                                Last 7 days
+                            </button>
+                            <button
+                                onClick={() => {
+                                    const until = new Date().toISOString().slice(0, 10);
+                                    const since = new Date(Date.now() - 14 * 86400000).toISOString().slice(0, 10);
+                                    updateFilter({ since, until });
+                                }}
+                                className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-500 hover:bg-gray-100 border border-gray-200"
+                            >
+                                Last 14 days
+                            </button>
+                        </div>
                         <input type="date" value={filters.since} onChange={(e) => updateFilter({ since: e.target.value })} className="text-sm border border-gray-200 rounded-lg px-2 py-1.5" />
                         <span className="text-gray-400 text-sm">to</span>
                         <input type="date" value={filters.until} onChange={(e) => updateFilter({ until: e.target.value })} className="text-sm border border-gray-200 rounded-lg px-2 py-1.5" />
