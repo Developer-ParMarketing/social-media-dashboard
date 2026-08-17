@@ -502,6 +502,8 @@ export default function AccountDetails() {
     const [syncing, setSyncing] = useState(false);
     const [lastSynced, setLastSynced] = useState(null);
     const [expandedComment, setExpandedComment] = useState(null);
+    const [followerHistory, setFollowerHistory] = useState(null);
+
 
     const [filters, setFilters] = useState({ platform: "all", type: "all", since: "", until: "" });
     const [contentPage, setContentPage] = useState(1);
@@ -560,6 +562,18 @@ export default function AccountDetails() {
             }
         })();
     }, [id, contentPage, filters]);
+
+    useEffect(() => {
+        if (!id) return;
+        (async () => {
+            try {
+                const res = await API.get(`/sync/${id}/followers`, { params: { days: 30 } });
+                setFollowerHistory(res.data);
+            } catch (err) {
+                console.error(err);
+            }
+        })();
+    }, [id]);
 
     const updateFilter = (patch) => {
         setContentPage(1);
@@ -731,14 +745,50 @@ export default function AccountDetails() {
                     <h1 className="font-['Syne'] text-4xl md:text-5xl font-extrabold mb-6 relative">{page.name}</h1>
                     <div className="flex flex-wrap gap-8 relative">
                         <HeroStat label="FB Followers" value={fmt(page.followers)} icon="👥" />
-                        <HeroStat label="FB Content" value={fmt(summary?.facebookContent)} icon="📘" />
+                        <HeroStat
+                            label="FB Content"
+                            value={fmt(summary?.facebookContent)}
+                            icon="📘"
+                            sub={`${(monthly || []).reduce((s, m) => s + (m.facebook?.posts ?? 0), 0)} posts · ${(monthly || []).reduce((s, m) => s + (m.facebook?.reels ?? 0), 0)} reels · ${(monthly || []).reduce((s, m) => s + (m.facebook?.videos ?? 0), 0)} videos`}
+                        />
+
                         {instagram?.profile && <>
                             <HeroStat label="IG Followers" value={fmt(instagram.profile.followers_count)} icon="📷" />
                             <HeroStat label="IG Media (Meta reported)" value={fmt(instagram.profile.media_count)} icon="🗂" />
+                            <HeroStat
+                                label="IG Content"
+                                value={fmt(igActualCount)}
+                                icon="📦"
+                                sub={`${(monthly || []).reduce((s, m) => s + (m.instagram?.posts ?? 0), 0)} posts · ${(monthly || []).reduce((s, m) => s + (m.instagram?.reels ?? 0), 0)} reels`}
+                            />
                         </>}
                         <HeroStat label="Total Content" value={fmt(summary?.totalContent)} icon="📦" />
                     </div>
                 </div>
+
+                {followerHistory && followerHistory.snapshots.length >= 1 && (
+                    <div>
+                        <SectionTitle>📈 Follower Growth</SectionTitle>
+                        {followerHistory.snapshots.length === 1 ? (
+                            <div className="bg-white rounded-xl p-4 border border-gray-100 text-sm text-gray-500">
+                                Tracking started {followerHistory.snapshots[0].date}. Growth numbers will appear after the next sync on a different day.
+                            </div>
+                        ) : (
+                            <div className="grid grid-cols-2 gap-3">
+                                <StatCard
+                                    label="FB Followers Gained"
+                                    value={`${followerHistory.fbGain >= 0 ? "+" : ""}${followerHistory.fbGain}`}
+                                    color={followerHistory.fbGain >= 0 ? "text-emerald-600" : "text-rose-600"}
+                                />
+                                <StatCard
+                                    label="IG Followers Gained"
+                                    value={`${followerHistory.igGain >= 0 ? "+" : ""}${followerHistory.igGain}`}
+                                    color={followerHistory.igGain >= 0 ? "text-emerald-600" : "text-rose-600"}
+                                />
+                            </div>
+                        )}
+                    </div>
+                )}
 
                 {/* ── SUMMARY CARDS ── */}
                 <div>
@@ -761,10 +811,10 @@ export default function AccountDetails() {
                     <SectionTitle>📅 Monthly Breakdown</SectionTitle>
                     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
                         <div className="overflow-x-auto max-h-[420px] overflow-y-auto">
-                            <table className="w-full text-sm min-w-[900px]">
+                            <table className="w-full text-sm min-w-[1500px]">
                                 <thead className="sticky top-0 bg-gray-50 border-b border-gray-200 z-10">
                                     <tr>
-                                        {["Month", "FB Posts", "FB Likes", "FB Reach", "FB Engagement", "IG Posts", "IG Reels", "IG Likes", "IG Views", "IG Reach", "IG Saves", "IG Watch Time", "Total Engagement"].map((h, i) => (
+                                        {["Month", "FB Posts", "FB Reels", "FB Videos", "FB Likes", "FB Comments", "FB Shares", "FB Views", "FB Reach", "FB Engagement", "IG Posts", "IG Reels", "IG Likes", "IG Comments", "IG Shares", "IG Views", "IG Reach", "IG Saves", "IG Watch Time", "IG Engagement", "Total Engagement"].map((h, i) => (
                                             <th key={h} className={`px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap ${i === 0 ? "text-left" : "text-right"}`}>{h}</th>
                                         ))}
                                     </tr>
@@ -774,20 +824,26 @@ export default function AccountDetails() {
                                         <tr key={i} className="hover:bg-gray-50/60 transition-colors">
                                             <td className="px-4 py-3 font-semibold text-gray-800 whitespace-nowrap">{m.month}</td>
                                             <td className="px-4 py-3 text-right text-gray-700">{m.facebook?.posts ?? 0}</td>
+                                            <td className="px-4 py-3 text-right text-gray-700">{m.facebook?.reels ?? 0}</td>
+                                            <td className="px-4 py-3 text-right text-gray-700">{m.facebook?.videos ?? 0}</td>
                                             <td className="px-4 py-3 text-right text-gray-700">{fmt(m.facebook?.likes)}</td>
+                                            <td className="px-4 py-3 text-right text-gray-700">{fmt(m.facebook?.comments)}</td>
+                                            <td className="px-4 py-3 text-right text-gray-700">{fmt(m.facebook?.shares)}</td>
+                                            <td className="px-4 py-3 text-right text-gray-700">{fmt(m.facebook?.views)}</td>
                                             <td className="px-4 py-3 text-right text-gray-700">{fmt(m.facebook?.reach)}</td>
                                             <td className="px-4 py-3 text-right font-medium text-blue-600">{fmt(m.facebook?.engagement)}</td>
                                             <td className="px-4 py-3 text-right text-gray-700">{m.instagram?.posts ?? 0}</td>
                                             <td className="px-4 py-3 text-right text-gray-700">{m.instagram?.reels ?? 0}</td>
                                             <td className="px-4 py-3 text-right text-gray-700">{fmt(m.instagram?.likes)}</td>
+                                            <td className="px-4 py-3 text-right text-gray-700">{fmt(m.instagram?.comments)}</td>
+                                            <td className="px-4 py-3 text-right text-gray-700">{fmt(m.instagram?.shares)}</td>
                                             <td className="px-4 py-3 text-right text-gray-700">{fmt(m.instagram?.views)}</td>
                                             <td className="px-4 py-3 text-right text-gray-700">{fmt(m.instagram?.reach)}</td>
                                             <td className="px-4 py-3 text-right text-gray-700">{fmt(m.instagram?.saves)}</td>
                                             <td className="px-4 py-3 text-right text-gray-700">
-                                                {m.instagram?.totalWatchTimeSec > 0
-                                                    ? fmtHMS(m.instagram.totalWatchTimeSec)
-                                                    : "—"}
+                                                {m.instagram?.totalWatchTimeSec > 0 ? fmtHMS(m.instagram.totalWatchTimeSec) : "—"}
                                             </td>
+                                            <td className="px-4 py-3 text-right font-medium text-fuchsia-600">{fmt(m.instagram?.engagement)}</td>
                                             <td className="px-4 py-3 text-right font-bold text-indigo-600">
                                                 {fmt((m.facebook?.engagement ?? 0) + (m.instagram?.engagement ?? 0))}
                                             </td>
@@ -796,18 +852,26 @@ export default function AccountDetails() {
                                     <tr className="bg-gray-50 font-bold border-t-2 border-gray-200">
                                         <td className="px-4 py-3 text-gray-800">Total</td>
                                         <td className="px-4 py-3 text-right">{(monthly || []).reduce((s, m) => s + (m.facebook?.posts ?? 0), 0)}</td>
+                                        <td className="px-4 py-3 text-right">{(monthly || []).reduce((s, m) => s + (m.facebook?.reels ?? 0), 0)}</td>
+                                        <td className="px-4 py-3 text-right">{(monthly || []).reduce((s, m) => s + (m.facebook?.videos ?? 0), 0)}</td>
                                         <td className="px-4 py-3 text-right">{fmt((monthly || []).reduce((s, m) => s + (m.facebook?.likes ?? 0), 0))}</td>
+                                        <td className="px-4 py-3 text-right">{fmt((monthly || []).reduce((s, m) => s + (m.facebook?.comments ?? 0), 0))}</td>
+                                        <td className="px-4 py-3 text-right">{fmt((monthly || []).reduce((s, m) => s + (m.facebook?.shares ?? 0), 0))}</td>
+                                        <td className="px-4 py-3 text-right">{fmt((monthly || []).reduce((s, m) => s + (m.facebook?.views ?? 0), 0))}</td>
                                         <td className="px-4 py-3 text-right">{fmt((monthly || []).reduce((s, m) => s + (m.facebook?.reach ?? 0), 0))}</td>
                                         <td className="px-4 py-3 text-right text-blue-600">{fmt((monthly || []).reduce((s, m) => s + (m.facebook?.engagement ?? 0), 0))}</td>
                                         <td className="px-4 py-3 text-right">{(monthly || []).reduce((s, m) => s + (m.instagram?.posts ?? 0), 0)}</td>
                                         <td className="px-4 py-3 text-right">{(monthly || []).reduce((s, m) => s + (m.instagram?.reels ?? 0), 0)}</td>
                                         <td className="px-4 py-3 text-right">{fmt((monthly || []).reduce((s, m) => s + (m.instagram?.likes ?? 0), 0))}</td>
+                                        <td className="px-4 py-3 text-right">{fmt((monthly || []).reduce((s, m) => s + (m.instagram?.comments ?? 0), 0))}</td>
+                                        <td className="px-4 py-3 text-right">{fmt((monthly || []).reduce((s, m) => s + (m.instagram?.shares ?? 0), 0))}</td>
                                         <td className="px-4 py-3 text-right">{fmt((monthly || []).reduce((s, m) => s + (m.instagram?.views ?? 0), 0))}</td>
                                         <td className="px-4 py-3 text-right">{fmt((monthly || []).reduce((s, m) => s + (m.instagram?.reach ?? 0), 0))}</td>
                                         <td className="px-4 py-3 text-right">{fmt((monthly || []).reduce((s, m) => s + (m.instagram?.saves ?? 0), 0))}</td>
                                         <td className="px-4 py-3 text-right">
                                             {fmtHMS((monthly || []).reduce((s, m) => s + (m.instagram?.totalWatchTimeSec ?? 0), 0))}
                                         </td>
+                                        <td className="px-4 py-3 text-right text-fuchsia-600">{fmt((monthly || []).reduce((s, m) => s + (m.instagram?.engagement ?? 0), 0))}</td>
                                         <td className="px-4 py-3 text-right text-indigo-600">
                                             {fmt((monthly || []).reduce((s, m) => s + (m.facebook?.engagement ?? 0) + (m.instagram?.engagement ?? 0), 0))}
                                         </td>
@@ -1051,11 +1115,11 @@ function PostCard({ post, label, onClick }) {
                         </div>
                     </div>
                 )}
-                {post.score > 0 && (
+                {/* {post.score > 0 && (
                     <div className="absolute top-2 right-2 bg-black/70 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
                         ⭐ {fmt(post.score)}
                     </div>
-                )}
+                )} */}
             </div>
 
             {/* Body */}
@@ -1119,7 +1183,7 @@ function PostModal({ post, onClose }) {
         ...(post.views > 0 ? [{ label: "Views", value: fmt(post.views), icon: "👁" }] : []),
         ...(post.reach > 0 ? [{ label: "Reach", value: fmt(post.reach), icon: "📡" }] : []),
         ...(post.engagement > 0 ? [{ label: "Engagement", value: fmt(post.engagement), icon: "📈" }] : []),
-        ...(post.score > 0 ? [{ label: "Score", value: fmt(post.score), icon: "⭐" }] : []),
+        // ...(post.score > 0 ? [{ label: "Score", value: fmt(post.score), icon: "⭐" }] : []),
     ];
 
     const reelStats = post.type === "reel" ? [
@@ -1159,7 +1223,7 @@ function PostModal({ post, onClose }) {
                     <div className="flex gap-2 flex-wrap items-center">
                         <span className={`text-xs font-bold px-3 py-1 rounded-full ${pc.bg} ${pc.text}`}>{post.platform}</span>
                         <span className={`text-xs font-bold px-3 py-1 rounded-full capitalize ${tc.bg} ${tc.text}`}>{post.type}</span>
-                        {post.score > 0 && <span className="text-xs font-bold px-3 py-1 rounded-full bg-yellow-50 text-yellow-700">⭐ Score: {fmt(post.score)}</span>}
+                        {/* {post.score > 0 && <span className="text-xs font-bold px-3 py-1 rounded-full bg-yellow-50 text-yellow-700">⭐ Score: {fmt(post.score)}</span>} */}
                     </div>
                     {post.message && <p className="text-gray-700 text-sm leading-relaxed">{post.message}</p>}
                     <div>
@@ -1262,10 +1326,11 @@ function PostModal({ post, onClose }) {
 /* ════════════════════════════════════════════════════
    ATOMS
 ════════════════════════════════════════════════════ */
-const HeroStat = ({ label, value, icon }) => (
+const HeroStat = ({ label, value, icon, sub }) => (
     <div className="text-center">
         <p className="text-white/60 text-xs uppercase tracking-widest mb-1">{icon} {label}</p>
         <p className="text-3xl font-bold font-['Syne']">{value}</p>
+        {sub && <p className="text-white/50 text-[11px] mt-1">{sub}</p>}
     </div>
 );
 

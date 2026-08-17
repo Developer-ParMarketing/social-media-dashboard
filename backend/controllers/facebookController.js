@@ -963,8 +963,17 @@ function calculateScore({ likes = 0, comments = 0, shares = 0, views = 0, saves 
     return Math.round(base);
 }
 
+// function getBest(arr) {
+//     return arr.length ? [...arr].sort((a, b) => b.score - a.score)[0] : null;
+// }
+
 function getBest(arr) {
-    return arr.length ? [...arr].sort((a, b) => b.score - a.score)[0] : null;
+    if (!arr.length) return null;
+    return [...arr].sort((a, b) => {
+        const metricA = a.type === "post" ? (a.engagement || 0) : (a.views || 0);
+        const metricB = b.type === "post" ? (b.engagement || 0) : (b.views || 0);
+        return metricB - metricA;
+    })[0];
 }
 
 const parseFbNextUrl = (fullUrl) => {

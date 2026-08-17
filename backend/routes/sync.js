@@ -8,6 +8,7 @@ const Content = require("../models/Content");
 const MonthlyStats = require("../models/MonthlyStats");
 const IgProfile = require("../models/IgProfile");
 const Comment = require("../models/Comment");
+const FollowerSnapshot = require("../models/FollowerSnapshot");
 
 const { getDashboardData } = require("../controllers/facebookController");
 
@@ -212,6 +213,24 @@ router.post("/:pageId", async (req, res) => {
                         { upsert: true, new: true }
                     );
                 }
+                // 3.5. Snapshot today's follower counts (for gain/loss tracking)
+                try {
+                    const today = new Date().toISOString().slice(0, 10); // "YYYY-MM-DD"
+                    console.log(`📸 Saving follower snapshot for ${today}: FB=${dashboardData.page.followers} IG=${dashboardData.instagram?.profile?.followers_count || 0}`);
+                    const snap = await FollowerSnapshot.findOneAndUpdate(
+                        { pageId, date: today },
+                        {
+                            pageId,
+                            date: today,
+                            fbFollowers: dashboardData.page.followers,
+                            igFollowers: dashboardData.instagram?.profile?.followers_count || 0,
+                        },
+                        { upsert: true, new: true }
+                    );
+                    console.log(`✅ Follower snapshot saved:`, snap);
+                } catch (err) {
+                    console.error(`❌ Follower snapshot FAILED:`, err.message);
+                }
 
                 // 4. Upsert content
                 const allContent = dashboardData.data || [];
@@ -368,7 +387,7 @@ router.get("/:pageId", async (req, res) => {
             facebookContent: fbContent.length,
             instagramContent: igContent.length,
             totalLikes: sum(allContent, "likes"),
-            totalComments: flatComments.length,   // ← now matches the Comments list exactly
+            totalComments: flatComments.length,
             totalShares: sum(allContent, "shares"),
             totalSaves: sum(allContent, "saves"),
             totalViews: sum(allContent, "views"),
@@ -385,8 +404,15 @@ router.get("/:pageId", async (req, res) => {
             },
         };
 
-        const getBest = (arr) => arr.length ? [...arr].sort((a, b) => b.score - a.score)[0] : null;
-
+        // const getBest = (arr) => arr.length ? [...arr].sort((a, b) => b.score - a.score)[0] : null;
+        const getBest = (arr) => {
+            if (!arr.length) return null;
+            return [...arr].sort((a, b) => {
+                const metricA = a.type === "post" ? (a.engagement || 0) : (a.views || 0);
+                const metricB = b.type === "post" ? (b.engagement || 0) : (b.views || 0);
+                return metricB - metricA;
+            })[0];
+        };
 
         return res.status(200).json({
             success: true,
@@ -426,7 +452,7 @@ router.get("/:pageId", async (req, res) => {
             },
             monthly,
             data: allContent.map(c => ({ ...c, id: c.contentId })),
-            comments: flatComments,   // ← NEW: comments now in GET response
+            comments: flatComments,
         });
 
     } catch (err) {
@@ -494,6 +520,43 @@ router.get("/:pageId/content", async (req, res) => {
         });
     } catch (err) {
         console.error("content list error:", err.message);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// GET /api/sync/:pageId/followers?days=30
+router.get("/:pageId/followers", async (req, res) => {
+    const { pageId } = req.params;
+    const days = Math.min(365, Math.max(1, parseInt(req.query.days) || 30));
+
+    try {
+        const since = new Date();
+        since.setDate(since.getDate() - days);
+        const sinceStr = since.toISOString().slice(0, 10);
+
+        const snapshots = await FollowerSnapshot.find({
+            pageId,
+            date: { $gte: sinceStr },
+        }).sort({ date: 1 }).lean();
+
+        if (snapshots.length === 0) {
+            return res.json({ success: true, snapshots: [], fbGain: 0, igGain: 0 });
+        }
+
+        const first = snapshots[0];
+        const last = snapshots[snapshots.length - 1];
+
+        res.json({
+            success: true,
+            snapshots,
+            fbGain: last.fbFollowers - first.fbFollowers,
+            igGain: last.igFollowers - first.igFollowers,
+            fbCurrent: last.fbFollowers,
+            igCurrent: last.igFollowers,
+            periodDays: days,
+        });
+    } catch (err) {
+        console.error("followers history error:", err.message);
         res.status(500).json({ success: false, error: err.message });
     }
 });
