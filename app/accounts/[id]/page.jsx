@@ -484,6 +484,110 @@ function QuickInsights({ monthly, metric }) {
     );
 }
 
+
+/* ════════════════════════════════════════════════════
+   FOLLOWER GROWTH CHART
+════════════════════════════════════════════════════ */
+function FollowerGrowthChart({ snapshots }) {
+    const chartRef = useRef(null);
+    const chartInstance = useRef(null);
+
+    useEffect(() => {
+        const loadChart = async () => {
+            if (typeof window === "undefined") return;
+
+            if (!window.Chart) {
+                await new Promise((resolve, reject) => {
+                    const s = document.createElement("script");
+                    s.src = "https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js";
+                    s.onload = resolve;
+                    s.onerror = reject;
+                    document.head.appendChild(s);
+                });
+            }
+
+            if (chartInstance.current) chartInstance.current.destroy();
+            const canvas = chartRef.current;
+            if (!canvas) return;
+
+            const labels = snapshots.map((s) =>
+                new Date(s.date).toLocaleDateString("en-IN", { day: "2-digit", month: "short" })
+            );
+
+            chartInstance.current = new window.Chart(canvas, {
+                type: "line",
+                data: {
+                    labels,
+                    datasets: [
+                        {
+                            label: "Facebook",
+                            data: snapshots.map((s) => s.fbFollowers),
+                            borderColor: "#3b82f6",
+                            backgroundColor: "rgba(59,130,246,0.08)",
+                            borderWidth: 2,
+                            pointRadius: 4,
+                            pointHoverRadius: 6,
+                            tension: 0.3,
+                            fill: true,
+                        },
+                        {
+                            label: "Instagram",
+                            data: snapshots.map((s) => s.igFollowers),
+                            borderColor: "#d946ef",
+                            backgroundColor: "rgba(217,70,239,0.08)",
+                            borderWidth: 2,
+                            pointRadius: 4,
+                            pointHoverRadius: 6,
+                            tension: 0.3,
+                            fill: true,
+                        },
+                    ],
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: "index", intersect: false },
+                    plugins: {
+                        legend: { display: true, position: "top", labels: { boxWidth: 12, font: { size: 11 } } },
+                        tooltip: {
+                            backgroundColor: "#1e1b4b",
+                            titleColor: "#e0e7ff",
+                            bodyColor: "#c7d2fe",
+                            padding: 12,
+                            cornerRadius: 8,
+                        },
+                    },
+                    scales: {
+                        x: {
+                            grid: { color: "rgba(0,0,0,0.04)", drawBorder: false },
+                            ticks: { color: "#9ca3af", font: { size: 11 } },
+                        },
+                        y: {
+                            grid: { color: "rgba(0,0,0,0.04)", drawBorder: false },
+                            ticks: { color: "#9ca3af", font: { size: 11 } },
+                            beginAtZero: false,
+                        },
+                    },
+                },
+            });
+        };
+
+        if (snapshots.length > 1) loadChart();
+
+        return () => {
+            if (chartInstance.current) chartInstance.current.destroy();
+        };
+    }, [snapshots]);
+
+    if (snapshots.length < 2) return null;
+
+    return (
+        <div style={{ position: "relative", height: 260, width: "100%" }} className="mb-5">
+            <canvas ref={chartRef} role="img" aria-label="Follower growth over time" />
+        </div>
+    );
+}
+
 /* ════════════════════════════════════════════════════
    MAIN PAGE
 ════════════════════════════════════════════════════ */
@@ -505,7 +609,8 @@ export default function AccountDetails() {
     const [followerHistory, setFollowerHistory] = useState(null);
 
 
-    const [filters, setFilters] = useState({ platform: "all", type: "all", since: "", until: "" });
+    const [filters, setFilters] = useState({ platform: "all", type: "all", since: "", until: "", hasComments: false });
+    const [globalFilters, setGlobalFilters] = useState({ platform: "all", since: "", until: "" });
     const [contentPage, setContentPage] = useState(1);
     const [content, setContent] = useState({ data: [], pagination: { page: 1, totalPages: 1, total: 0 } });
     const [contentLoading, setContentLoading] = useState(true);
@@ -551,7 +656,7 @@ export default function AccountDetails() {
                 setContentLoading(true);
                 const params = { page: contentPage, limit: 10, ...filters };
                 Object.keys(params).forEach((k) => {
-                    if (params[k] === "" || params[k] === "all") delete params[k];
+                    if (params[k] === "" || params[k] === "all" || params[k] === false) delete params[k];
                 });
                 const res = await API.get(`/sync/${id}/content`, { params });
                 setContent(res.data);
@@ -620,6 +725,27 @@ export default function AccountDetails() {
         setLoadingComments(false);
     }, [dashboard]);
 
+
+    const monthlyFollowerMap = {};
+    if (followerHistory?.snapshots?.length) {
+        const byMonth = {};
+        followerHistory.snapshots.forEach((s) => {
+            const month = s.date.slice(0, 7);
+            (byMonth[month] ||= []).push(s);
+        });
+        Object.entries(byMonth).forEach(([month, snaps]) => {
+            const sorted = [...snaps].sort((a, b) => a.date.localeCompare(b.date));
+            const first = sorted[0], last = sorted[sorted.length - 1];
+            monthlyFollowerMap[month] = {
+                fbFollowers: last.fbFollowers,
+                fbGain: last.fbFollowers - first.fbFollowers,
+                fbPct: first.fbFollowers ? (((last.fbFollowers - first.fbFollowers) / first.fbFollowers) * 100).toFixed(1) : "0.0",
+                igFollowers: last.igFollowers,
+                igGain: last.igFollowers - first.igFollowers,
+                igPct: first.igFollowers ? (((last.igFollowers - first.igFollowers) / first.igFollowers) * 100).toFixed(1) : "0.0",
+            };
+        });
+    }
     // useEffect(() => {
     //     if (!id || !pageToken) return;
     //     (async () => {
@@ -676,6 +802,29 @@ export default function AccountDetails() {
     }
 
     const { page, summary, instagram, facebook, bestOverall, globalBest, bestByCategory, igBest, monthly, data: allContent } = dashboard;
+    const filteredMonthly = (monthly || []).filter((m) => {
+        if (globalFilters.since && m.month < globalFilters.since.slice(0, 7)) return false;
+        if (globalFilters.until && m.month > globalFilters.until.slice(0, 7)) return false;
+        return true;
+    });
+
+    const showFB = globalFilters.platform !== "instagram";
+    const showIG = globalFilters.platform !== "facebook";
+    const sumFrom = (key, plat) => filteredMonthly.reduce((s, m) => s + (m[plat]?.[key] ?? 0), 0);
+
+    const filteredSummary = {
+        totalLikes: (showFB ? sumFrom("likes", "facebook") : 0) + (showIG ? sumFrom("likes", "instagram") : 0),
+        totalComments: (showFB ? sumFrom("comments", "facebook") : 0) + (showIG ? sumFrom("comments", "instagram") : 0),
+        totalShares: (showFB ? sumFrom("shares", "facebook") : 0) + (showIG ? sumFrom("shares", "instagram") : 0),
+        totalSaves: showIG ? sumFrom("saves", "instagram") : 0,
+        totalViews: (showFB ? sumFrom("views", "facebook") : 0) + (showIG ? sumFrom("views", "instagram") : 0),
+        totalReach: (showFB ? sumFrom("reach", "facebook") : 0) + (showIG ? sumFrom("reach", "instagram") : 0),
+        totalEngagement: (showFB ? sumFrom("engagement", "facebook") : 0) + (showIG ? sumFrom("engagement", "instagram") : 0),
+        facebookContent: showFB ? filteredMonthly.reduce((s, m) => s + (m.facebook?.posts ?? 0) + (m.facebook?.reels ?? 0) + (m.facebook?.videos ?? 0), 0) : 0,
+        instagramContent: showIG ? filteredMonthly.reduce((s, m) => s + (m.instagram?.posts ?? 0) + (m.instagram?.reels ?? 0), 0) : 0,
+    };
+    filteredSummary.totalContent = filteredSummary.facebookContent + filteredSummary.instagramContent;
+
     console.log('summary', summary);
 
     const igActualCount = instagram?.data?.length || 0;
@@ -697,6 +846,14 @@ export default function AccountDetails() {
         { label: "⏱ Most watched reel", post: igBest?.mostWatched },
         { label: "🧲 Best retention", post: igBest?.bestRetention },
     ].filter((i) => i.post);
+    const filteredTopContent = topContent.filter((item) => {
+        if (globalFilters.platform !== "all" && item.post.platform !== globalFilters.platform) return false;
+        if (globalFilters.since && item.post.created_time && item.post.created_time.slice(0, 10) < globalFilters.since) return false;
+        if (globalFilters.until && item.post.created_time && item.post.created_time.slice(0, 10) > globalFilters.until) return false;
+        return true;
+    });
+
+    const updateGlobalFilter = (patch) => setGlobalFilters((f) => ({ ...f, ...patch }));
 
     return (
         <div className="min-h-screen bg-[#f5f5f0] font-['DM_Sans',sans-serif]">
@@ -750,41 +907,115 @@ export default function AccountDetails() {
                             value={fmt(summary?.facebookContent)}
                             icon="📘"
                             sub={`${(monthly || []).reduce((s, m) => s + (m.facebook?.posts ?? 0), 0)} posts · ${(monthly || []).reduce((s, m) => s + (m.facebook?.reels ?? 0), 0)} reels · ${(monthly || []).reduce((s, m) => s + (m.facebook?.videos ?? 0), 0)} videos`}
+                            info="Posts + Reels + Videos actually synced into this dashboard. May differ from Facebook's own profile counter, which uses a different internal definition."
                         />
-
                         {instagram?.profile && <>
                             <HeroStat label="IG Followers" value={fmt(instagram.profile.followers_count)} icon="📷" />
-                            <HeroStat label="IG Media (Meta reported)" value={fmt(instagram.profile.media_count)} icon="🗂" />
+                            <HeroStat
+                                label="IG Media (Meta reported)"
+                                value={fmt(instagram.profile.media_count)}
+                                icon="🗂"
+                                info="Instagram's own lifetime media count, pulled directly from Meta's API. This is NOT the same as 'IG Content' below — Meta's /media endpoint often won't return this full historical count."
+                            />
                             <HeroStat
                                 label="IG Content"
                                 value={fmt(igActualCount)}
                                 icon="📦"
                                 sub={`${(monthly || []).reduce((s, m) => s + (m.instagram?.posts ?? 0), 0)} posts · ${(monthly || []).reduce((s, m) => s + (m.instagram?.reels ?? 0), 0)} reels`}
+                                info="Posts + Reels actually fetched and synced into this dashboard via Meta's API — the real, usable dataset behind every chart and stat below."
                             />
                         </>}
-                        <HeroStat label="Total Content" value={fmt(summary?.totalContent)} icon="📦" />
+                        <HeroStat
+                            label="Total Content"
+                            value={fmt(summary?.totalContent)}
+                            icon="📦"
+                            info="FB Content + IG Content combined — everything currently synced."
+                        />
                     </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-3 bg-white border border-gray-200 rounded-xl p-3">
+                    <span className="text-xs font-bold text-gray-400 uppercase tracking-wide">Page filter:</span>
+                    <div className="flex gap-1">
+                        {["all", "facebook", "instagram"].map((p) => (
+                            <button
+                                key={p}
+                                onClick={() => updateGlobalFilter({ platform: p })}
+                                className={`px-3 py-1.5 rounded-lg text-sm font-medium ${globalFilters.platform === p ? "bg-indigo-600 text-white" : "text-gray-500 hover:bg-gray-100"}`}
+                            >
+                                {p === "all" ? "All Platforms" : p === "facebook" ? "Facebook" : "Instagram"}
+                            </button>
+                        ))}
+                    </div>
+                    <input type="date" value={globalFilters.since} onChange={(e) => updateGlobalFilter({ since: e.target.value })} className="text-sm border border-gray-200 rounded-lg px-2 py-1.5" />
+                    <span className="text-gray-400 text-sm">to</span>
+                    <input type="date" value={globalFilters.until} onChange={(e) => updateGlobalFilter({ until: e.target.value })} className="text-sm border border-gray-200 rounded-lg px-2 py-1.5" />
+                    {(globalFilters.platform !== "all" || globalFilters.since || globalFilters.until) && (
+                        <button onClick={() => setGlobalFilters({ platform: "all", since: "", until: "" })} className="text-xs text-gray-400 underline">
+                            Clear page filter
+                        </button>
+                    )}
                 </div>
 
                 {followerHistory && followerHistory.snapshots.length >= 1 && (
                     <div>
                         <SectionTitle>📈 Follower Growth</SectionTitle>
+
                         {followerHistory.snapshots.length === 1 ? (
                             <div className="bg-white rounded-xl p-4 border border-gray-100 text-sm text-gray-500">
                                 Tracking started {followerHistory.snapshots[0].date}. Growth numbers will appear after the next sync on a different day.
                             </div>
                         ) : (
-                            <div className="grid grid-cols-2 gap-3">
-                                <StatCard
-                                    label="FB Followers Gained"
-                                    value={`${followerHistory.fbGain >= 0 ? "+" : ""}${followerHistory.fbGain}`}
-                                    color={followerHistory.fbGain >= 0 ? "text-emerald-600" : "text-rose-600"}
-                                />
-                                <StatCard
-                                    label="IG Followers Gained"
-                                    value={`${followerHistory.igGain >= 0 ? "+" : ""}${followerHistory.igGain}`}
-                                    color={followerHistory.igGain >= 0 ? "text-emerald-600" : "text-rose-600"}
-                                />
+                            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+                                <div className="grid grid-cols-2 gap-3 mb-5">
+                                    <StatCard
+                                        label="FB Followers Gained"
+                                        value={`${followerHistory.fbGain >= 0 ? "+" : ""}${followerHistory.fbGain}`}
+                                        color={followerHistory.fbGain >= 0 ? "text-emerald-600" : "text-rose-600"}
+                                    />
+                                    <StatCard
+                                        label="IG Followers Gained"
+                                        value={`${followerHistory.igGain >= 0 ? "+" : ""}${followerHistory.igGain}`}
+                                        color={followerHistory.igGain >= 0 ? "text-emerald-600" : "text-rose-600"}
+                                    />
+                                </div>
+
+                                <FollowerGrowthChart snapshots={followerHistory.snapshots} />
+
+                                <div className="overflow-x-auto max-h-[300px] overflow-y-auto border-t border-gray-100 pt-3">
+                                    <table className="w-full text-sm">
+                                        <thead className="sticky top-0 bg-white">
+                                            <tr>
+                                                <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase">Date</th>
+                                                <th className="px-3 py-2 text-right text-xs font-semibold text-gray-500 uppercase">FB Followers</th>
+                                                <th className="px-3 py-2 text-right text-xs font-semibold text-gray-500 uppercase">FB Change</th>
+                                                <th className="px-3 py-2 text-right text-xs font-semibold text-gray-500 uppercase">IG Followers</th>
+                                                <th className="px-3 py-2 text-right text-xs font-semibold text-gray-500 uppercase">IG Change</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-gray-50">
+                                            {[...followerHistory.snapshots].reverse().map((s, i, arr) => {
+                                                const prev = arr[i + 1]; // next in reversed array = earlier day
+                                                const fbChange = prev ? s.fbFollowers - prev.fbFollowers : null;
+                                                const igChange = prev ? s.igFollowers - prev.igFollowers : null;
+                                                return (
+                                                    <tr key={s.date} className="hover:bg-gray-50/60">
+                                                        <td className="px-3 py-2 font-medium text-gray-800">
+                                                            {new Date(s.date).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}
+                                                        </td>
+                                                        <td className="px-3 py-2 text-right text-gray-700">{fmt(s.fbFollowers)}</td>
+                                                        <td className={`px-3 py-2 text-right font-medium ${fbChange > 0 ? "text-emerald-600" : fbChange < 0 ? "text-rose-600" : "text-gray-400"}`}>
+                                                            {fbChange === null ? "—" : `${fbChange >= 0 ? "+" : ""}${fbChange}`}
+                                                        </td>
+                                                        <td className="px-3 py-2 text-right text-gray-700">{fmt(s.igFollowers)}</td>
+                                                        <td className={`px-3 py-2 text-right font-medium ${igChange > 0 ? "text-emerald-600" : igChange < 0 ? "text-rose-600" : "text-gray-400"}`}>
+                                                            {igChange === null ? "—" : `${igChange >= 0 ? "+" : ""}${igChange}`}
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })}
+                                        </tbody>
+                                    </table>
+                                </div>
                             </div>
                         )}
                     </div>
@@ -794,15 +1025,16 @@ export default function AccountDetails() {
                 <div>
                     <SectionTitle>📊 Overall Performance</SectionTitle>
                     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-                        <StatCard label="Likes" value={fmt(summary?.totalLikes)} color="text-rose-600" />
-                        <StatCard label="Comments" value={fmt(summary?.totalComments)} color="text-indigo-600" />
-                        <StatCard label="Shares" value={fmt(summary?.totalShares)} color="text-sky-600" />
-                        <StatCard label="Saves" value={fmt(summary?.totalSaves)} color="text-emerald-600" />
-                        <StatCard label="Total Reach" value={fmt(summary?.totalReach)} color="text-violet-600" />
-                        <StatCard label="Total Views" value={fmt(summary?.totalViews)} color="text-orange-600" />
-                        <StatCard label="Engagement" value={fmt(summary?.totalEngagement)} color="text-pink-600" />
-                        <StatCard label="FB Content" value={fmt(summary?.facebookContent)} color="text-blue-600" />
-                        <StatCard label="IG Content" value={fmt(igActualCount)} color="text-fuchsia-600" />
+                        <StatCard label="Likes" value={fmt(filteredSummary.totalLikes)} color="text-rose-600" />
+                        <StatCard label="Comments" value={fmt(filteredSummary.totalComments)} color="text-indigo-600" />
+                        <StatCard label="Shares" value={fmt(filteredSummary.totalShares)} color="text-sky-600" />
+                        <StatCard label="Saves" value={fmt(filteredSummary.totalSaves)} color="text-emerald-600" />
+                        <StatCard label="Total Reach" value={fmt(filteredSummary.totalReach)} color="text-violet-600" />
+                        <StatCard label="Total Views" value={fmt(filteredSummary.totalViews)} color="text-orange-600" />
+                        <StatCard label="Engagement" value={fmt(filteredSummary.totalEngagement)} color="text-pink-600" />
+                        <StatCard label="FB Content" value={fmt(filteredSummary.facebookContent)} color="text-blue-600" />
+                        <StatCard label="IG Content" value={fmt(filteredSummary.instagramContent)} color="text-fuchsia-600" />
+
                     </div>
                 </div>
 
@@ -814,7 +1046,7 @@ export default function AccountDetails() {
                             <table className="w-full text-sm min-w-[1500px]">
                                 <thead className="sticky top-0 bg-gray-50 border-b border-gray-200 z-10">
                                     <tr>
-                                        {["Month", "FB Posts", "FB Reels", "FB Videos", "FB Likes", "FB Comments", "FB Shares", "FB Views", "FB Reach", "FB Engagement", "IG Posts", "IG Reels", "IG Likes", "IG Comments", "IG Shares", "IG Views", "IG Reach", "IG Saves", "IG Watch Time", "IG Engagement", "Total Engagement"].map((h, i) => (
+                                        {["Month", "FB Posts", "FB Reels", "FB Videos", "FB Likes", "FB Comments", "FB Shares", "FB Views", "FB Reach", "FB Engagement", "FB Followers", "FB Follower %", "IG Posts", "IG Reels", "IG Likes", "IG Comments", "IG Shares", "IG Views", "IG Reach", "IG Saves", "IG Watch Time", "IG Engagement", "IG Followers", "IG Follower %", "Total Engagement"].map((h, i) => (
                                             <th key={h} className={`px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap ${i === 0 ? "text-left" : "text-right"}`}>{h}</th>
                                         ))}
                                     </tr>
@@ -832,6 +1064,13 @@ export default function AccountDetails() {
                                             <td className="px-4 py-3 text-right text-gray-700">{fmt(m.facebook?.views)}</td>
                                             <td className="px-4 py-3 text-right text-gray-700">{fmt(m.facebook?.reach)}</td>
                                             <td className="px-4 py-3 text-right font-medium text-blue-600">{fmt(m.facebook?.engagement)}</td>
+
+                                            <td className="px-4 py-3 text-right text-gray-500">
+                                                {monthlyFollowerMap[m.month]?.fbFollowers != null ? fmt(monthlyFollowerMap[m.month].fbFollowers) : "—"}
+                                            </td>
+                                            <td className={`px-4 py-3 text-right font-medium ${monthlyFollowerMap[m.month]?.fbGain > 0 ? "text-emerald-600" : monthlyFollowerMap[m.month]?.fbGain < 0 ? "text-rose-600" : "text-gray-400"}`}>
+                                                {monthlyFollowerMap[m.month] ? `${monthlyFollowerMap[m.month].fbGain >= 0 ? "+" : ""}${monthlyFollowerMap[m.month].fbPct}%` : "—"}
+                                            </td>
                                             <td className="px-4 py-3 text-right text-gray-700">{m.instagram?.posts ?? 0}</td>
                                             <td className="px-4 py-3 text-right text-gray-700">{m.instagram?.reels ?? 0}</td>
                                             <td className="px-4 py-3 text-right text-gray-700">{fmt(m.instagram?.likes)}</td>
@@ -844,6 +1083,13 @@ export default function AccountDetails() {
                                                 {m.instagram?.totalWatchTimeSec > 0 ? fmtHMS(m.instagram.totalWatchTimeSec) : "—"}
                                             </td>
                                             <td className="px-4 py-3 text-right font-medium text-fuchsia-600">{fmt(m.instagram?.engagement)}</td>
+                                            {/* after IG Engagement td */}
+                                            <td className="px-4 py-3 text-right text-gray-500">
+                                                {monthlyFollowerMap[m.month]?.igFollowers != null ? fmt(monthlyFollowerMap[m.month].igFollowers) : "—"}
+                                            </td>
+                                            <td className={`px-4 py-3 text-right font-medium ${monthlyFollowerMap[m.month]?.igGain > 0 ? "text-emerald-600" : monthlyFollowerMap[m.month]?.igGain < 0 ? "text-rose-600" : "text-gray-400"}`}>
+                                                {monthlyFollowerMap[m.month] ? `${monthlyFollowerMap[m.month].igGain >= 0 ? "+" : ""}${monthlyFollowerMap[m.month].igPct}%` : "—"}
+                                            </td>
                                             <td className="px-4 py-3 text-right font-bold text-indigo-600">
                                                 {fmt((m.facebook?.engagement ?? 0) + (m.instagram?.engagement ?? 0))}
                                             </td>
@@ -860,6 +1106,10 @@ export default function AccountDetails() {
                                         <td className="px-4 py-3 text-right">{fmt((monthly || []).reduce((s, m) => s + (m.facebook?.views ?? 0), 0))}</td>
                                         <td className="px-4 py-3 text-right">{fmt((monthly || []).reduce((s, m) => s + (m.facebook?.reach ?? 0), 0))}</td>
                                         <td className="px-4 py-3 text-right text-blue-600">{fmt((monthly || []).reduce((s, m) => s + (m.facebook?.engagement ?? 0), 0))}</td>
+                                        <td className="px-4 py-3 text-right text-gray-500">
+                                            {followerHistory?.fbCurrent != null ? fmt(followerHistory.fbCurrent) : "—"}
+                                        </td>
+                                        <td className="px-4 py-3 text-right text-gray-400">—</td>
                                         <td className="px-4 py-3 text-right">{(monthly || []).reduce((s, m) => s + (m.instagram?.posts ?? 0), 0)}</td>
                                         <td className="px-4 py-3 text-right">{(monthly || []).reduce((s, m) => s + (m.instagram?.reels ?? 0), 0)}</td>
                                         <td className="px-4 py-3 text-right">{fmt((monthly || []).reduce((s, m) => s + (m.instagram?.likes ?? 0), 0))}</td>
@@ -872,6 +1122,10 @@ export default function AccountDetails() {
                                             {fmtHMS((monthly || []).reduce((s, m) => s + (m.instagram?.totalWatchTimeSec ?? 0), 0))}
                                         </td>
                                         <td className="px-4 py-3 text-right text-fuchsia-600">{fmt((monthly || []).reduce((s, m) => s + (m.instagram?.engagement ?? 0), 0))}</td>
+                                        <td className="px-4 py-3 text-right text-gray-500">
+                                            {followerHistory?.igCurrent != null ? fmt(followerHistory.igCurrent) : "—"}
+                                        </td>
+                                        <td className="px-4 py-3 text-right text-gray-400">—</td>
                                         <td className="px-4 py-3 text-right text-indigo-600">
                                             {fmt((monthly || []).reduce((s, m) => s + (m.facebook?.engagement ?? 0) + (m.instagram?.engagement ?? 0), 0))}
                                         </td>
@@ -896,14 +1150,14 @@ export default function AccountDetails() {
                 )}
 
                 {/* ── ANALYTICS CHARTS ── */}
-                <AnalyticsCharts monthly={monthly} />
+                <AnalyticsCharts monthly={filteredMonthly} />
 
                 {/* ── TOP PERFORMING ── */}
-                {topContent.length > 0 && (
+                {filteredTopContent.length > 0 && (
                     <div>
                         <SectionTitle>🏆 Top Performing Content</SectionTitle>
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
-                            {topContent.map((item, i) => (
+                            {filteredTopContent.map((item, i) => (
                                 <PostCard key={i} post={item.post} label={item.label} onClick={setSelectedPost} />
                             ))}
                         </div>
@@ -936,24 +1190,55 @@ export default function AccountDetails() {
                             <option value="reel">Reels</option>
                             <option value="video">Videos</option>
                         </select>
+                        <button
+                            onClick={() => updateFilter({ hasComments: !filters.hasComments })}
+                            className={`px-3 py-1.5 rounded-lg text-sm font-medium border ${filters.hasComments ? "bg-indigo-600 text-white border-indigo-600" : "text-gray-500 border-gray-200 hover:bg-gray-100"}`}
+                        >
+                            💬 Has comments
+                        </button>
                         <div className="flex gap-1">
+                            {/* Last 7 Days */}
                             <button
                                 onClick={() => {
                                     const until = new Date().toISOString().slice(0, 10);
-                                    const since = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
-                                    updateFilter({ since, until });
+                                    const since = new Date(Date.now() - 7 * 86400000)
+                                        .toISOString()
+                                        .slice(0, 10);
+
+                                    if (filters.since === since) {
+                                        updateFilter({ since: "", until: "" });
+                                    } else {
+                                        updateFilter({ since, until });
+                                    }
                                 }}
-                                className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-500 hover:bg-gray-100 border border-gray-200"
+                                className={`px-3 py-1.5 rounded-lg text-sm font-medium border ${filters.since ===
+                                    new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10)
+                                    ? "bg-indigo-600 text-white border-indigo-600"
+                                    : "text-gray-500 border-gray-200 hover:bg-gray-100"
+                                    }`}
                             >
                                 Last 7 days
                             </button>
+
+                            {/* Last 14 Days */}
                             <button
                                 onClick={() => {
                                     const until = new Date().toISOString().slice(0, 10);
-                                    const since = new Date(Date.now() - 14 * 86400000).toISOString().slice(0, 10);
-                                    updateFilter({ since, until });
+                                    const since = new Date(Date.now() - 14 * 86400000)
+                                        .toISOString()
+                                        .slice(0, 10);
+
+                                    if (filters.since === since) {
+                                        updateFilter({ since: "", until: "" });
+                                    } else {
+                                        updateFilter({ since, until });
+                                    }
                                 }}
-                                className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-500 hover:bg-gray-100 border border-gray-200"
+                                className={`px-3 py-1.5 rounded-lg text-sm font-medium border ${filters.since ===
+                                    new Date(Date.now() - 14 * 86400000).toISOString().slice(0, 10)
+                                    ? "bg-indigo-600 text-white border-indigo-600"
+                                    : "text-gray-500 border-gray-200 hover:bg-gray-100"
+                                    }`}
                             >
                                 Last 14 days
                             </button>
@@ -961,8 +1246,8 @@ export default function AccountDetails() {
                         <input type="date" value={filters.since} onChange={(e) => updateFilter({ since: e.target.value })} className="text-sm border border-gray-200 rounded-lg px-2 py-1.5" />
                         <span className="text-gray-400 text-sm">to</span>
                         <input type="date" value={filters.until} onChange={(e) => updateFilter({ until: e.target.value })} className="text-sm border border-gray-200 rounded-lg px-2 py-1.5" />
-                        {(filters.platform !== "all" || filters.type !== "all" || filters.since || filters.until) && (
-                            <button onClick={() => updateFilter({ platform: "all", type: "all", since: "", until: "" })} className="text-xs text-gray-400 underline">
+                        {(filters.platform !== "all" || filters.type !== "all" || filters.since || filters.until || filters.hasComments) && (
+                            <button onClick={() => updateFilter({ platform: "all", type: "all", since: "", until: "", hasComments: false })} className="text-xs text-gray-400 underline">
                                 Clear filters
                             </button>
                         )}
@@ -1326,14 +1611,24 @@ function PostModal({ post, onClose }) {
 /* ════════════════════════════════════════════════════
    ATOMS
 ════════════════════════════════════════════════════ */
-const HeroStat = ({ label, value, icon, sub }) => (
+const InfoTip = ({ text }) => (
+    <span className="relative inline-block group ml-1 align-middle">
+        <span className="cursor-help text-white/70 text-[10px] border border-white/40 rounded-full w-3.5 h-3.5 inline-flex items-center justify-center leading-none">i</span>
+        <span className="pointer-events-none absolute z-50 hidden group-hover:block bottom-full left-1/2 -translate-x-1/2 mb-2 w-56 bg-gray-900 text-white text-[11px] leading-snug rounded-lg p-2 shadow-lg">
+            {text}
+        </span>
+    </span>
+);
+const HeroStat = ({ label, value, icon, sub, info }) => (
     <div className="text-center">
-        <p className="text-white/60 text-xs uppercase tracking-widest mb-1">{icon} {label}</p>
+        <p className="text-white/60 text-xs uppercase tracking-widest mb-1 flex items-center justify-center gap-0.5">
+            {icon} {label}
+            {info && <InfoTip text={info} />}
+        </p>
         <p className="text-3xl font-bold font-['Syne']">{value}</p>
         {sub && <p className="text-white/50 text-[11px] mt-1">{sub}</p>}
     </div>
 );
-
 const SectionTitle = ({ children, className = "" }) => (
     <h2 className={`text-lg font-bold text-gray-800 mb-4 ${className}`}>{children}</h2>
 );

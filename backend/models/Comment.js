@@ -15,6 +15,7 @@ const CommentSchema = new mongoose.Schema({
     // IG-specific
     replies: { type: Array, default: [] },
     lastSynced: { type: Date, default: Date.now },
+    lastCommentCheck: { type: Date, default: null },
 }, { timestamps: true });
 
 CommentSchema.index({ pageId: 1, commentId: 1, platform: 1 }, { unique: true });

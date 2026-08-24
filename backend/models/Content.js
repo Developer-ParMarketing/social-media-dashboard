@@ -3,17 +3,11 @@ const mongoose = require("mongoose");
 const ContentSchema = new mongoose.Schema({
     pageId: { type: String, required: true, index: true },
     contentId: { type: String, required: true },
-
-    // ✅ Store media ID (never expires)
     mediaId: String,
-
     platform: { type: String, enum: ["facebook", "instagram"] },
     type: { type: String, enum: ["post", "reel", "video"] },
     message: String,
-
-    // ⚠️ Image URL — WILL EXPIRE, keep for backward compat
     image: String,
-
     created_time: Date,
     likes: { type: Number, default: 0 },
     comments: { type: Number, default: 0 },
@@ -38,6 +32,7 @@ const ContentSchema = new mongoose.Schema({
     reelsReplays: Number,
     views15s: Number,
     lastSynced: { type: Date, default: Date.now },
+    lastCommentCheck: { type: Date, default: null },
 }, { timestamps: true });
 
 ContentSchema.index({ pageId: 1, contentId: 1, platform: 1 }, { unique: true });

@@ -2,6 +2,7 @@ const express = require("express");
 const router = express.Router();
 const generateProof = require("../utils/generateProof");
 const fbClient = require("../utils/fbClient");
+const { withConcurrencyLimit } = require("../utils/concurrency");
 
 const Page = require("../models/Page");
 const Content = require("../models/Content");
@@ -25,125 +26,147 @@ const fetchAllPages = async (url, params) => {
     let currentUrl = url;
     let currentParams = { ...params };
     const { access_token, appsecret_proof } = params;
+
     while (currentUrl) {
-        try {
-            const response = await fbClient.get(currentUrl, { params: currentParams });
-            results = results.concat(response.data?.data || []);
-            const nextUrl = response.data?.paging?.next;
-            if (nextUrl) {
-                const parsed = parseFbNextUrl(nextUrl);
-                if (!parsed) break;
-                currentUrl = parsed.path;
-                currentParams = { ...parsed.params, access_token, appsecret_proof };
-            } else { currentUrl = null; }
-        } catch (err) {
-            console.warn(` fetchAllPages error:`, err.response?.data?.error?.message || err.message);
-            break;
+        let response;
+        let attempt = 0;
+        while (true) {
+            try {
+                response = await fbClient.get(currentUrl, { params: currentParams });
+                break;
+            } catch (err) {
+                const isRateLimit = err.response?.data?.error?.code === 4 || err.response?.status === 429;
+                attempt++;
+                if (!isRateLimit || attempt > 3) {
+                    console.warn(` fetchAllPages error:`, err.response?.data?.error?.message || err.message);
+                    return results;
+                }
+                await new Promise((r) => setTimeout(r, 2000 * attempt));
+            }
+        }
+
+        results = results.concat(response.data?.data || []);
+        const nextUrl = response.data?.paging?.next;
+        if (nextUrl) {
+            const parsed = parseFbNextUrl(nextUrl);
+            if (!parsed) break;
+            currentUrl = parsed.path;
+            currentParams = { ...parsed.params, access_token, appsecret_proof };
+        } else {
+            currentUrl = null;
         }
     }
     return results;
 };
 
-// ── fetch + upsert all comments for a page ──
-async function syncComments(pageId, access_token, appsecret_proof) {
+// ══════════════════════════════════════════════
+// INCREMENTAL COMMENT SYNC — FIXED
+// Reuses Content docs already saved by getDashboardData in this same
+// sync run, instead of re-fetching FB posts / IG media lists from Meta
+// a second time. Tracks "checked" via Content.lastCommentCheck so pages
+// with zero comments don't get re-scanned on every single sync forever.
+// ══════════════════════════════════════════════
+async function syncComments(pageId, access_token, appsecret_proof, { recentDays = 30 } = {}) {
     const commonParams = { access_token, appsecret_proof };
     const allCommentDocs = [];
+    const checkedIds = []; // { contentId, platform } — every item we actually attempted this run
 
     try {
-        console.log(` syncComments: starting for ${pageId}`);
+        console.log(`\n💬 syncComments: starting for ${pageId} (recent window: ${recentDays}d)`);
+        const cutoff = new Date(Date.now() - recentDays * 86400000);
 
-        // 1. FB posts
-        const fbPosts = await fetchAllPages(`/${pageId}/posts`, {
-            fields: "id,comments.summary(true)",
-            limit: 50,
-            ...commonParams,
+        // Reuse content already synced this run — no second Meta fetch needed
+        const allContent = await Content.find(
+            { pageId },
+            "contentId platform created_time lastCommentCheck"
+        ).lean();
+
+        const toCheck = allContent.filter((c) => {
+            const isRecent = c.created_time && new Date(c.created_time) >= cutoff;
+            const neverChecked = !c.lastCommentCheck;
+            return isRecent || neverChecked;
         });
-        console.log(` FB posts found: ${fbPosts.length}`);
 
-        for (const post of fbPosts) {
-            const count = post.comments?.summary?.total_count ?? 0;
-            if (count === 0) continue;
-            try {
-                const comments = await fetchAllPages(`/${post.id}/comments`, {
-                    fields: "id,message,created_time,from{name,id},like_count",
-                    filter: "stream",
-                    limit: 50,
-                    ...commonParams,
-                });
-                for (const c of comments) {
-                    allCommentDocs.push({
-                        pageId,
-                        postId: post.id,
-                        platform: "facebook",
-                        commentId: c.id,
-                        username: c.from?.name || "Unknown",
-                        text: c.message || "",
-                        timestamp: c.created_time ? new Date(c.created_time) : null,
-                        fromName: c.from?.name || null,
-                        fromId: c.from?.id || null,
-                        likeCount: c.like_count || 0,
-                        replies: [],
-                        lastSynced: new Date(),
+        const fbToCheck = toCheck.filter((c) => c.platform === "facebook");
+        const igToCheck = toCheck.filter((c) => c.platform === "instagram");
+
+        const fbTotal = allContent.filter((c) => c.platform === "facebook").length;
+        const igTotal = allContent.filter((c) => c.platform === "instagram").length;
+
+        console.log(`  FB content to check comments for: ${fbToCheck.length}/${fbTotal} (recent or never-checked)`);
+        console.log(`  IG content to check comments for: ${igToCheck.length}/${igTotal} (recent or never-checked)`);
+
+        // ── 1. FB comments ──────────────────────────
+        await withConcurrencyLimit(
+            fbToCheck.map((post) => async () => {
+                checkedIds.push({ contentId: post.contentId, platform: "facebook" });
+                try {
+                    const comments = await fetchAllPages(`/${post.contentId}/comments`, {
+                        fields: "id,message,created_time,from{name,id},like_count",
+                        filter: "stream",
+                        limit: 50,
+                        ...commonParams,
                     });
-                }
-            } catch (err) {
-                console.warn(` FB comments failed for post ${post.id}:`, err.message);
-            }
-        }
-        console.log(` FB comments collected: ${allCommentDocs.filter(c => c.platform === 'facebook').length}`);
-
-        // 2. IG media
-        try {
-            const pageInfoRes = await fbClient.get(`/${pageId}`, {
-                params: { fields: "instagram_business_account", ...commonParams },
-            });
-            const igUserId = pageInfoRes.data?.instagram_business_account?.id;
-
-            if (igUserId) {
-                const igMedia = await fetchAllPages(`/${igUserId}/media`, {
-                    fields: "id,comments_count",
-                    limit: 33,
-                    ...commonParams,
-                });
-                console.log(` IG media found: ${igMedia.length}`);
-
-                for (const media of igMedia) {
-                    if ((media.comments_count ?? 0) === 0) continue;
-                    try {
-                        const comments = await fetchAllPages(`/${media.id}/comments`, {
-                            fields: "id,text,username,timestamp,replies{id,text,username,timestamp}",
-                            limit: 50,
-                            ...commonParams,
+                    for (const c of comments) {
+                        allCommentDocs.push({
+                            pageId,
+                            postId: post.contentId,
+                            platform: "facebook",
+                            commentId: c.id,
+                            username: c.from?.name || "Unknown",
+                            text: c.message || "",
+                            timestamp: c.created_time ? new Date(c.created_time) : null,
+                            fromName: c.from?.name || null,
+                            fromId: c.from?.id || null,
+                            likeCount: c.like_count || 0,
+                            replies: [],
+                            lastSynced: new Date(),
                         });
-                        for (const c of comments) {
-                            allCommentDocs.push({
-                                pageId,
-                                postId: media.id,
-                                platform: "instagram",
-                                commentId: c.id,
-                                username: c.username || "Unknown",
-                                text: c.text || "",
-                                timestamp: c.timestamp ? new Date(c.timestamp) : null,
-                                fromName: null,
-                                fromId: null,
-                                likeCount: 0,
-                                replies: c.replies?.data || [],
-                                lastSynced: new Date(),
-                            });
-                        }
-                    } catch (err) {
-                        console.warn(` IG comments failed for ${media.id}:`, err.message);
                     }
+                } catch (err) {
+                    console.warn(`  FB comments failed for post ${post.contentId}:`, err.message);
                 }
-                console.log(` IG comments collected: ${allCommentDocs.filter(c => c.platform === 'instagram').length}`);
-            }
-        } catch (err) {
-            console.warn(` IG profile fetch failed:`, err.message);
-        }
+            }),
+            5
+        );
+        console.log(`  FB comments collected: ${allCommentDocs.filter((c) => c.platform === "facebook").length}`);
 
-        // 3. Bulk upsert
-        console.log(` Total comments to save: ${allCommentDocs.length}`);
+        // ── 2. IG comments ──────────────────────────
+        await withConcurrencyLimit(
+            igToCheck.map((media) => async () => {
+                checkedIds.push({ contentId: media.contentId, platform: "instagram" });
+                try {
+                    const comments = await fetchAllPages(`/${media.contentId}/comments`, {
+                        fields: "id,text,username,timestamp,replies{id,text,username,timestamp}",
+                        limit: 50,
+                        ...commonParams,
+                    });
+                    for (const c of comments) {
+                        allCommentDocs.push({
+                            pageId,
+                            postId: media.contentId,
+                            platform: "instagram",
+                            commentId: c.id,
+                            username: c.username || "Unknown",
+                            text: c.text || "",
+                            timestamp: c.timestamp ? new Date(c.timestamp) : null,
+                            fromName: null,
+                            fromId: null,
+                            likeCount: 0,
+                            replies: c.replies?.data || [],
+                            lastSynced: new Date(),
+                        });
+                    }
+                } catch (err) {
+                    console.warn(`  IG comments failed for ${media.contentId}:`, err.message);
+                }
+            }),
+            5
+        );
+        console.log(`  IG comments collected: ${allCommentDocs.filter((c) => c.platform === "instagram").length}`);
 
+        // ── 3. Bulk upsert comments ─────────────────
+        console.log(`  Total comments to save: ${allCommentDocs.length}`);
         if (allCommentDocs.length) {
             const bulkOps = allCommentDocs.map((c) => ({
                 updateOne: {
@@ -153,13 +176,24 @@ async function syncComments(pageId, access_token, appsecret_proof) {
                 },
             }));
             const result = await Comment.bulkWrite(bulkOps, { ordered: false });
-            console.log(` Comments saved: upserted=${result.upsertedCount} modified=${result.modifiedCount}`);
+            console.log(`  Comments saved: upserted=${result.upsertedCount} modified=${result.modifiedCount}`);
         } else {
-            console.log(` No comments found to save`);
+            console.log(`  No new comments to save`);
+        }
+
+        // ── 4. Mark everything we checked, regardless of result ──
+        if (checkedIds.length) {
+            const checkOps = checkedIds.map(({ contentId, platform }) => ({
+                updateOne: {
+                    filter: { pageId, contentId, platform },
+                    update: { $set: { lastCommentCheck: new Date() } },
+                },
+            }));
+            await Content.bulkWrite(checkOps, { ordered: false });
+            console.log(`  Marked ${checkedIds.length} items as comment-checked`);
         }
 
         return allCommentDocs.length;
-
     } catch (err) {
         console.error(" syncComments error:", err.message);
         return 0;
@@ -168,17 +202,33 @@ async function syncComments(pageId, access_token, appsecret_proof) {
 
 // ══════════════════════════════════════════════
 // POST /api/sync/:pageId  — fetch from Meta + save to DB
+// ?full=true forces a full comment resync (all content, not just recent)
 // ══════════════════════════════════════════════
+const MIN_SYNC_INTERVAL_MS = 15 * 60 * 1000; // 15 minutes cooldown
+
 router.post("/:pageId", async (req, res) => {
     const { pageId } = req.params;
     const { access_token } = req.body;
+    const fullResync = req.query.full === "true";
 
     if (!access_token) {
         return res.status(400).json({ error: "access_token required in body" });
     }
 
     try {
-        // ✅ Return 202 immediately (don't wait for sync)
+        const existingPage = await Page.findOne({ pageId });
+        if (existingPage?.lastSyncStarted) {
+            const elapsed = Date.now() - existingPage.lastSyncStarted.getTime();
+            if (elapsed < MIN_SYNC_INTERVAL_MS) {
+                const waitMin = Math.ceil((MIN_SYNC_INTERVAL_MS - elapsed) / 60000);
+                return res.status(429).json({
+                    error: `Sync ran recently. Please wait ~${waitMin} more minute(s) before syncing again.`,
+                });
+            }
+        }
+
+        await Page.findOneAndUpdate({ pageId }, { pageId, lastSyncStarted: new Date() }, { upsert: true });
+
         res.status(202).json({
             success: true,
             message: "Sync started in background",
@@ -186,15 +236,16 @@ router.post("/:pageId", async (req, res) => {
             pageId,
         });
 
-        // ✅ Run everything in background without waiting
         setImmediate(async () => {
             try {
-                console.log(`\n🔄 SYNC START (background): ${pageId}`);
+                console.log(`\n🔄 SYNC START (background): ${pageId}${fullResync ? " [FULL RESYNC]" : ""}`);
                 const startTime = Date.now();
 
                 const appsecret_proof = generateProof(access_token);
 
-                // 1. Dashboard data
+                // 1. Dashboard data (content + insights — still fetches all content
+                //    listings each time since that part is cheap; per-item insight
+                //    calls are the existing withConcurrencyLimit-based logic)
                 const dashboardData = await getDashboardData(pageId, access_token);
 
                 // 2. Upsert Page
@@ -213,11 +264,12 @@ router.post("/:pageId", async (req, res) => {
                         { upsert: true, new: true }
                     );
                 }
-                // 3.5. Snapshot today's follower counts (for gain/loss tracking)
+
+                // 3.5. Snapshot today's follower counts
                 try {
-                    const today = new Date().toISOString().slice(0, 10); // "YYYY-MM-DD"
+                    const today = new Date().toISOString().slice(0, 10);
                     console.log(`📸 Saving follower snapshot for ${today}: FB=${dashboardData.page.followers} IG=${dashboardData.instagram?.profile?.followers_count || 0}`);
-                    const snap = await FollowerSnapshot.findOneAndUpdate(
+                    await FollowerSnapshot.findOneAndUpdate(
                         { pageId, date: today },
                         {
                             pageId,
@@ -227,7 +279,6 @@ router.post("/:pageId", async (req, res) => {
                         },
                         { upsert: true, new: true }
                     );
-                    console.log(`✅ Follower snapshot saved:`, snap);
                 } catch (err) {
                     console.error(`❌ Follower snapshot FAILED:`, err.message);
                 }
@@ -259,20 +310,23 @@ router.post("/:pageId", async (req, res) => {
                     await MonthlyStats.bulkWrite(monthlyOps, { ordered: false });
                 }
 
-                // 6. Sync comments
-                const commentCount = await syncComments(pageId, access_token, appsecret_proof);
+                // 6. Sync comments — INCREMENTAL by default
+                //    Pass ?full=true on the sync request to force a complete
+                //    comment resync across all content (useful occasionally,
+                //    e.g. once a month, to catch anything the recent-window missed).
+                const commentCount = await syncComments(pageId, access_token, appsecret_proof, {
+                    recentDays: fullResync ? 999999 : 30,
+                });
                 console.log(`✅ Comments synced: ${commentCount} items`);
 
                 const durationMs = Date.now() - startTime;
                 console.log(`✅ SYNC COMPLETE (background): ${pageId}`);
                 console.log(`   Duration: ${(durationMs / 1000).toFixed(1)}s`);
-
             } catch (err) {
                 console.error(`\n❌ SYNC FAILED (background): ${pageId}`);
                 console.error(`   Error: ${err.message}`);
             }
         });
-
     } catch (err) {
         console.error("❌ Sync start error:", err.message);
         return res.status(500).json({ success: false, error: err.message });
@@ -289,52 +343,6 @@ router.get("/:pageId", async (req, res) => {
         const page = await Page.findOne({ pageId });
         if (!page) return res.status(404).json({ error: "Page not found. Run a sync first." });
 
-        // const [igProfile, allContent, monthly, allComments] = await Promise.all([
-        //     IgProfile.findOne({ pageId }),
-        //     Content.find({ pageId }).sort({ created_time: -1 }).lean(),
-        //     MonthlyStats.find({ pageId }).sort({ month: 1 }).lean(),
-        //     Comment.find({ pageId }).sort({ timestamp: -1 }).lean(),  // ← NEW
-        // ]);
-
-        // const fbContent = allContent.filter(c => c.platform === "facebook");
-        // const igContent = allContent.filter(c => c.platform === "instagram");
-        // const sum = (arr, key) => arr.reduce((s, i) => s + (i[key] || 0), 0);
-        // const igReels = igContent.filter(c => c.type === "reel");
-
-        // const summary = {
-        //     totalContent: allContent.length,
-        //     facebookContent: fbContent.length,
-        //     instagramContent: igContent.length,
-        //     totalLikes: sum(allContent, "likes"),
-        //     totalComments: sum(allContent, "comments"),
-        //     totalShares: sum(allContent, "shares"),
-        //     totalSaves: sum(allContent, "saves"),
-        //     totalViews: sum(allContent, "views"),
-        //     totalEngagement: sum(allContent, "engagement"),
-        //     totalReach: sum(allContent, "reach"),
-        //     reels: {
-        //         ig: {
-        //             count: igReels.length,
-        //             totalWatchTimeSec: sum(igReels, "totalWatchTimeSec"),
-        //             totalWatchTimeMin: Math.round(sum(igReels, "totalWatchTimeSec") / 60),
-        //             avgWatchTimeSec: igReels.length ? Math.round(sum(igReels, "avgWatchTimeSec") / igReels.length * 10) / 10 : 0,
-        //             avgSkipRatePct: "0%",
-        //         },
-        //     },
-        // };
-
-        // const getBest = (arr) => arr.length ? [...arr].sort((a, b) => b.score - a.score)[0] : null;
-
-        // // ← Flatten comments to match the shape the frontend expects
-        // const flatComments = allComments.map(c => ({
-        //     platform: c.platform,
-        //     postId: c.postId,
-        //     username: c.username,
-        //     text: c.text,
-        //     timestamp: c.timestamp,
-        // }));
-
-
         const [igProfile, allContentRaw, monthly, allComments] = await Promise.all([
             IgProfile.findOne({ pageId }),
             Content.find({ pageId }).sort({ created_time: -1 }).lean(),
@@ -342,9 +350,6 @@ router.get("/:pageId", async (req, res) => {
             Comment.find({ pageId }).sort({ timestamp: -1 }).lean(),
         ]);
 
-        // Flatten top-level comments AND their nested replies into one list —
-        // this becomes the single source of truth for both the comment feed
-        // and the "total comments" stat, so they can never disagree.
         const flatComments = [];
         for (const c of allComments) {
             flatComments.push({
@@ -365,8 +370,6 @@ router.get("/:pageId", async (req, res) => {
             }
         }
 
-        // Group by post so we can attach real comments to every content item
-        // (fixes "Top Performing Content" showing no comments)
         const commentsByPost = {};
         for (const c of flatComments) {
             (commentsByPost[c.postId] ||= []).push(c);
@@ -377,10 +380,10 @@ router.get("/:pageId", async (req, res) => {
             commentCount: (commentsByPost[c.contentId] || []).length,
         }));
 
-        const fbContent = allContent.filter(c => c.platform === "facebook");
-        const igContent = allContent.filter(c => c.platform === "instagram");
+        const fbContent = allContent.filter((c) => c.platform === "facebook");
+        const igContent = allContent.filter((c) => c.platform === "instagram");
         const sum = (arr, key) => arr.reduce((s, i) => s + (i[key] || 0), 0);
-        const igReels = igContent.filter(c => c.type === "reel");
+        const igReels = igContent.filter((c) => c.type === "reel");
 
         const summary = {
             totalContent: allContent.length,
@@ -398,13 +401,12 @@ router.get("/:pageId", async (req, res) => {
                     count: igReels.length,
                     totalWatchTimeSec: sum(igReels, "totalWatchTimeSec"),
                     totalWatchTimeMin: Math.round(sum(igReels, "totalWatchTimeSec") / 60),
-                    avgWatchTimeSec: igReels.length ? Math.round(sum(igReels, "avgWatchTimeSec") / igReels.length * 10) / 10 : 0,
+                    avgWatchTimeSec: igReels.length ? Math.round((sum(igReels, "avgWatchTimeSec") / igReels.length) * 10) / 10 : 0,
                     avgSkipRatePct: "0%",
                 },
             },
         };
 
-        // const getBest = (arr) => arr.length ? [...arr].sort((a, b) => b.score - a.score)[0] : null;
         const getBest = (arr) => {
             if (!arr.length) return null;
             return [...arr].sort((a, b) => {
@@ -422,51 +424,48 @@ router.get("/:pageId", async (req, res) => {
                 profile: igProfile || null,
                 data: igContent,
                 best: {
-                    post: getBest(igContent.filter(c => c.type === "post")),
-                    reel: getBest(igContent.filter(c => c.type === "reel")),
+                    post: getBest(igContent.filter((c) => c.type === "post")),
+                    reel: getBest(igContent.filter((c) => c.type === "reel")),
                     overall: getBest(igContent),
-                    mostWatched: [...igContent.filter(c => c.type === "reel" && c.avgWatchTimeSec > 0)].sort((a, b) => b.avgWatchTimeSec - a.avgWatchTimeSec)[0] || null,
-                    bestRetention: [...igContent.filter(c => c.type === "reel" && c.views >= 100 && c.skipRate != null)].sort((a, b) => a.skipRate - b.skipRate)[0] || null,
+                    mostWatched: [...igContent.filter((c) => c.type === "reel" && c.avgWatchTimeSec > 0)].sort((a, b) => b.avgWatchTimeSec - a.avgWatchTimeSec)[0] || null,
+                    bestRetention: [...igContent.filter((c) => c.type === "reel" && c.views >= 100 && c.skipRate != null)].sort((a, b) => a.skipRate - b.skipRate)[0] || null,
                 },
             },
             facebook: {
                 data: fbContent,
                 best: {
-                    post: getBest(fbContent.filter(c => c.type === "post")),
-                    reel: getBest(fbContent.filter(c => c.type === "reel")),
-                    video: getBest(fbContent.filter(c => c.type === "video")),
+                    post: getBest(fbContent.filter((c) => c.type === "post")),
+                    reel: getBest(fbContent.filter((c) => c.type === "reel")),
+                    video: getBest(fbContent.filter((c) => c.type === "video")),
                 },
             },
             summary,
             bestOverall: getBest(allContent),
             globalBest: getBest(allContent),
             bestByCategory: {
-                post: getBest(fbContent.filter(c => c.type === "post")),
-                reel: getBest(fbContent.filter(c => c.type === "reel")),
-                video: getBest(fbContent.filter(c => c.type === "video")),
+                post: getBest(fbContent.filter((c) => c.type === "post")),
+                reel: getBest(fbContent.filter((c) => c.type === "reel")),
+                video: getBest(fbContent.filter((c) => c.type === "video")),
             },
             igBest: {
-                post: getBest(igContent.filter(c => c.type === "post")),
-                reel: getBest(igContent.filter(c => c.type === "reel")),
+                post: getBest(igContent.filter((c) => c.type === "post")),
+                reel: getBest(igContent.filter((c) => c.type === "reel")),
                 overall: getBest(igContent),
             },
             monthly,
-            data: allContent.map(c => ({ ...c, id: c.contentId })),
+            data: allContent.map((c) => ({ ...c, id: c.contentId })),
             comments: flatComments,
         });
-
     } catch (err) {
         console.error(" DB read error:", err.message);
         return res.status(500).json({ success: false, error: err.message });
     }
 });
 
-
 // GET /api/sync/:pageId/content
-// ?page=1&limit=24&platform=all|facebook|instagram&type=all|post|reel|video&since=YYYY-MM-DD&until=YYYY-MM-DD
 router.get("/:pageId/content", async (req, res) => {
     const { pageId } = req.params;
-    let { page = 1, limit = 24, platform = "all", type = "all", since, until } = req.query;
+    let { page = 1, limit = 24, platform = "all", type = "all", since, until, hasComments } = req.query;
 
     page = Math.max(1, parseInt(page));
     limit = Math.min(100, Math.max(1, parseInt(limit)));
@@ -480,17 +479,16 @@ router.get("/:pageId/content", async (req, res) => {
             if (since) query.created_time.$gte = new Date(since);
             if (until) query.created_time.$lte = new Date(`${until}T23:59:59`);
         }
+        if (hasComments === "true") {
+            const postIdsWithComments = await Comment.distinct("postId", { pageId });
+            query.contentId = { $in: postIdsWithComments };
+        }
 
         const [items, total] = await Promise.all([
-            Content.find(query)
-                .sort({ created_time: -1 })
-                .skip((page - 1) * limit)
-                .limit(limit)
-                .lean(),
+            Content.find(query).sort({ created_time: -1 }).skip((page - 1) * limit).limit(limit).lean(),
             Content.countDocuments(query),
         ]);
 
-        // pull only the comments relevant to this page of posts
         const postIds = items.map((i) => i.contentId);
         const comments = postIds.length
             ? await Comment.find({ pageId, postId: { $in: postIds } }).sort({ timestamp: -1 }).lean()
@@ -534,10 +532,7 @@ router.get("/:pageId/followers", async (req, res) => {
         since.setDate(since.getDate() - days);
         const sinceStr = since.toISOString().slice(0, 10);
 
-        const snapshots = await FollowerSnapshot.find({
-            pageId,
-            date: { $gte: sinceStr },
-        }).sort({ date: 1 }).lean();
+        const snapshots = await FollowerSnapshot.find({ pageId, date: { $gte: sinceStr } }).sort({ date: 1 }).lean();
 
         if (snapshots.length === 0) {
             return res.json({ success: true, snapshots: [], fbGain: 0, igGain: 0 });
