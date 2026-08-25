@@ -933,7 +933,7 @@ export default function AccountDetails() {
                         />
                     </div>
                 </div>
-                <div className="flex flex-wrap items-center gap-3 bg-white border border-gray-200 rounded-xl p-3">
+                {/* <div className="flex flex-wrap items-center gap-3 bg-white border border-gray-200 rounded-xl p-3">
                     <span className="text-xs font-bold text-gray-400 uppercase tracking-wide">Page filter:</span>
                     <div className="flex gap-1">
                         {["all", "facebook", "instagram"].map((p) => (
@@ -954,7 +954,7 @@ export default function AccountDetails() {
                             Clear page filter
                         </button>
                     )}
-                </div>
+                </div> */}
 
                 {followerHistory && followerHistory.snapshots.length >= 1 && (
                     <div>
