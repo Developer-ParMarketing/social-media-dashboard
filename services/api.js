@@ -1,8 +1,7 @@
 import axios from "axios";
 
 const API = axios.create({
-    baseURL: "https://social-backend.parmarketing.co.uk/api",
-    // baseURL: "http://localhost:5000/api",
+    baseURL: process.env.NEXT_PUBLIC_API_URL || "https://social-backend.parmarketing.co.uk/api",
 });
 
 export default API;

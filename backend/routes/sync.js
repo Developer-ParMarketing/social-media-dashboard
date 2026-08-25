@@ -12,6 +12,8 @@ const Comment = require("../models/Comment");
 const FollowerSnapshot = require("../models/FollowerSnapshot");
 
 const { getDashboardData } = require("../controllers/facebookController");
+const { processCommentsForPage } = require("../services/commentProcessor");
+const { getBrandNames } = require("../utils/commentHelpers");
 
 // ── helpers (same fetchAllPages logic, local copy) ──
 const parseFbNextUrl = (fullUrl) => {
@@ -227,7 +229,11 @@ router.post("/:pageId", async (req, res) => {
             }
         }
 
-        await Page.findOneAndUpdate({ pageId }, { pageId, lastSyncStarted: new Date() }, { upsert: true });
+        await Page.findOneAndUpdate(
+            { pageId },
+            { pageId, lastSyncStarted: new Date(), syncStatus: "processing" },
+            { upsert: true }
+        );
 
         res.status(202).json({
             success: true,
@@ -319,10 +325,28 @@ router.post("/:pageId", async (req, res) => {
                 });
                 console.log(`✅ Comments synced: ${commentCount} items`);
 
+                const brandNames = getBrandNames(
+                    dashboardData.page?.name,
+                    dashboardData.instagram?.profile?.username
+                );
+                try {
+                    const analysisResult = await processCommentsForPage(
+                        pageId,
+                        dashboardData.page?.name || "our team",
+                        brandNames
+                    );
+                    console.log(`✅ Comment analysis: ${analysisResult.processed}/${analysisResult.total} updated`);
+                } catch (analyzeErr) {
+                    console.error(`⚠ Comment analysis failed (sync data saved): ${analyzeErr.message}`);
+                }
+
+                await Page.findOneAndUpdate({ pageId }, { syncStatus: "complete" });
+
                 const durationMs = Date.now() - startTime;
                 console.log(`✅ SYNC COMPLETE (background): ${pageId}`);
                 console.log(`   Duration: ${(durationMs / 1000).toFixed(1)}s`);
             } catch (err) {
+                await Page.findOneAndUpdate({ pageId }, { syncStatus: "failed" }).catch(() => {});
                 console.error(`\n❌ SYNC FAILED (background): ${pageId}`);
                 console.error(`   Error: ${err.message}`);
             }
@@ -419,6 +443,8 @@ router.get("/:pageId", async (req, res) => {
         return res.status(200).json({
             success: true,
             syncedAt: page.lastSynced,
+            syncStatus: page.syncStatus || "idle",
+            syncing: page.syncStatus === "processing",
             page: { name: page.name, followers: page.followers },
             instagram: {
                 profile: igProfile || null,

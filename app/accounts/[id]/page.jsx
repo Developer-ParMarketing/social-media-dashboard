@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import { useParams, useSearchParams, useRouter } from "next/navigation";
+import Link from "next/link";
 import API from "@/services/api";
 
 /* ── helpers ── */
@@ -632,11 +633,21 @@ export default function AccountDetails() {
                     const res = await API.get(`/sync/${id}`);
 
                     // Only set dashboard if it has real page data
-                    if (res.data?.page) {
+                    if (res.data?.page && !res.data?.syncing) {
                         setDashboard(res.data);
                         setLastSynced(res.data.syncedAt);
                         clearInterval(interval);
                         setSyncing(false);
+                        const syncEvent = {
+                            pageId: id,
+                            syncedAt: res.data.syncedAt || new Date().toISOString(),
+                        };
+                        if ("BroadcastChannel" in window) {
+                            const channel = new BroadcastChannel("social-dashboard-sync");
+                            channel.postMessage(syncEvent);
+                            channel.close();
+                        }
+                        window.localStorage.setItem("reply-desk-sync-complete", JSON.stringify(syncEvent));
                     }
                 } catch (err) {
                     console.error(err);
@@ -686,7 +697,7 @@ export default function AccountDetails() {
     };
 
     useEffect(() => {
-        if (!id || !pageToken) return;
+        if (!id) return;
         (async () => {
             try {
                 setLoading(true);
@@ -700,7 +711,7 @@ export default function AccountDetails() {
                 setLastSynced(res.data.syncedAt);
             } catch (err) {
                 // 404 = never synced — trigger first sync automatically
-                if (err.response?.status === 404) {
+                if (err.response?.status === 404 && pageToken) {
                     await handleSync();
                 } else {
                     console.error("Dashboard fetch error:", err);
@@ -890,6 +901,13 @@ export default function AccountDetails() {
                     <span className={syncing ? "animate-spin" : ""}>🔄</span>
                     {syncing ? "Syncing…" : "Sync Data"}
                 </button>
+
+                <Link
+                    href={`/accounts/${id}/comments`}
+                    className="flex items-center gap-2 px-4 py-1.5 rounded-xl border border-violet-200 bg-violet-50 text-violet-700 text-sm font-semibold hover:bg-violet-100"
+                >
+                    💬 Reply Desk
+                </Link>
 
                 <span className="text-xs text-gray-400 sm:hidden">Social Dashboard</span>
             </div>
@@ -1166,7 +1184,15 @@ export default function AccountDetails() {
 
                 {/* ── ALL CONTENT with filters + pagination ── */}
                 <div>
-                    <SectionTitle>📁 All Content ({fmt(content.pagination.total)})</SectionTitle>
+                    <div className="flex flex-wrap items-end justify-between gap-3 mb-4">
+                        <SectionTitle className="mb-0">📁 All Content ({fmt(content.pagination.total)})</SectionTitle>
+                        <Link
+                            href={`/accounts/${id}/comments`}
+                            className="text-sm font-semibold text-violet-700 hover:text-violet-900"
+                        >
+                            Open Reply Desk →
+                        </Link>
+                    </div>
 
                     <div className="flex flex-wrap items-center gap-3 mb-4 bg-white border border-gray-200 rounded-xl p-3">
                         <div className="flex gap-1">
@@ -1556,7 +1582,7 @@ function PostModal({ post, onClose }) {
 
                         {post.postComments === undefined ? (
                             <div className="bg-gray-50 rounded-lg p-4 text-center text-sm text-gray-400 border border-gray-100">
-                                Comments aren't loaded for this card yet — open it from "All Content" below to see them.
+                                Comments aren&apos;t loaded for this card yet — open it from &quot;All Content&quot; below to see them.
                             </div>
                         ) : post.postComments.length === 0 ? (
                             <div className="bg-gray-50 rounded-lg p-4 text-center text-sm text-gray-400 border border-gray-100">

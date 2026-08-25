@@ -7,6 +7,7 @@ const adsRoutes = require("./routes/ads");
 const instaRoutes = require("./routes/instagram");
 const facebookRoutes = require("./routes/facebook");
 const syncRoutes = require("./routes/sync");
+const commentsRoutes = require("./routes/comments");
 
 
 const app = express();
@@ -24,6 +25,7 @@ app.use("/api/ads", adsRoutes);
 app.use("/api/instagram", instaRoutes);
 app.use("/api/facebook", facebookRoutes);
 app.use("/api/sync", syncRoutes);
+app.use("/api/comments", commentsRoutes);
 
 app.listen(8019, () => {
     console.log("Server running on port 8019");
