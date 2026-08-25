@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import API from "@/services/api";
@@ -27,7 +27,7 @@ function mergeEntries(allEntries, pageId) {
     return [...byCategory.values()].sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
 }
 
-export default function GuidebookPage() {
+function GuidebookContent() {
     const searchParams = useSearchParams();
     const initialPageId = searchParams.get("pageId") || "";
     const dashboardHref = initialPageId
@@ -437,5 +437,13 @@ function Field({ label, value, onChange, rows = 2 }) {
                     className="w-full mt-1 rounded-xl border border-gray-200 px-3 py-2 text-sm" />
             )}
         </div>
+    );
+}
+
+export default function GuidebookPage() {
+    return (
+        <Suspense fallback={<div>Loading...</div>}>
+            <GuidebookContent />
+        </Suspense>
     );
 }
