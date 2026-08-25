@@ -346,7 +346,7 @@ router.post("/:pageId", async (req, res) => {
                 console.log(`✅ SYNC COMPLETE (background): ${pageId}`);
                 console.log(`   Duration: ${(durationMs / 1000).toFixed(1)}s`);
             } catch (err) {
-                await Page.findOneAndUpdate({ pageId }, { syncStatus: "failed" }).catch(() => {});
+                await Page.findOneAndUpdate({ pageId }, { syncStatus: "failed" }).catch(() => { });
                 console.error(`\n❌ SYNC FAILED (background): ${pageId}`);
                 console.error(`   Error: ${err.message}`);
             }
@@ -377,6 +377,7 @@ router.get("/:pageId", async (req, res) => {
         const flatComments = [];
         for (const c of allComments) {
             flatComments.push({
+                ...c,
                 platform: c.platform,
                 postId: c.postId,
                 username: c.username,
@@ -385,6 +386,7 @@ router.get("/:pageId", async (req, res) => {
             });
             for (const r of (c.replies || [])) {
                 flatComments.push({
+                    ...r,
                     platform: c.platform,
                     postId: c.postId,
                     username: r.username || r.from?.name || "Unknown",
@@ -523,6 +525,7 @@ router.get("/:pageId/content", async (req, res) => {
         const commentsByPost = {};
         for (const c of comments) {
             (commentsByPost[c.postId] ||= []).push({
+                ...c,
                 platform: c.platform,
                 username: c.username,
                 text: c.text,

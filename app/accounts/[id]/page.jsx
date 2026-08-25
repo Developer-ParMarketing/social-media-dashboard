@@ -4,6 +4,7 @@ import { useEffect, useState, useRef } from "react";
 import { useParams, useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import API from "@/services/api";
+import CommentThreadCard from "@/components/CommentThreadCard";
 
 /* ── helpers ── */
 const fmt = (n) => (n ?? 0).toLocaleString("en-IN");
@@ -725,14 +726,7 @@ export default function AccountDetails() {
     useEffect(() => {
         if (!dashboard) return;
         const comments = dashboard.comments || [];
-        const flat = comments.map((c) => ({
-            platform: c.platform,
-            postId: c.postId,
-            username: c.username,
-            text: c.text,
-            timestamp: c.timestamp,
-        }));
-        setAllComments(flat);
+        setAllComments(comments);
         setLoadingComments(false);
     }, [dashboard]);
 
@@ -1377,12 +1371,19 @@ export default function AccountDetails() {
                 {expandedComment !== null && allComments && allComments[expandedComment] && (
                     <CommentDetailModal
                         comment={allComments[expandedComment]}
+                        brandNames={[page.name, instagram?.profile?.username].filter(Boolean)}
                         onClose={() => setExpandedComment(null)}
                     />
                 )}
             </div>
 
-            {selectedPost && <PostModal post={selectedPost} onClose={() => setSelectedPost(null)} />}
+            {selectedPost && (
+                <PostModal
+                    post={selectedPost}
+                    brandNames={[page.name, instagram?.profile?.username].filter(Boolean)}
+                    onClose={() => setSelectedPost(null)}
+                />
+            )}
         </div>
     );
 }
@@ -1471,7 +1472,7 @@ function PostCard({ post, label, onClick }) {
 /* ════════════════════════════════════════════════════
    POST MODAL
 ════════════════════════════════════════════════════ */
-function PostModal({ post, onClose }) {
+function PostModal({ post, brandNames = [], onClose }) {
     const isVideo = ["reel", "video"].includes(post.type);
     const pc = PLATFORM_COLORS[post.platform] || PLATFORM_COLORS.facebook;
     const tc = TYPE_COLORS[post.type] || TYPE_COLORS.post;
@@ -1591,15 +1592,7 @@ function PostModal({ post, onClose }) {
                         ) : (
                             <div className="space-y-2 max-h-64 overflow-y-auto">
                                 {post.postComments.map((c, i) => (
-                                    <div key={i} className="bg-gray-50 rounded-lg p-3 border border-gray-100">
-                                        <div className="flex justify-between mb-1">
-                                            <span className="text-sm font-semibold text-gray-800">{c.username || "Anonymous"}</span>
-                                            <span className="text-[10px] text-gray-400">
-                                                {c.timestamp ? new Date(c.timestamp).toLocaleDateString("en-IN") : ""}
-                                            </span>
-                                        </div>
-                                        <p className="text-sm text-gray-600">{c.text}</p>
-                                    </div>
+                                    <CommentThreadCard key={c._id || i} comment={c} brandNames={brandNames} />
                                 ))}
                             </div>
                         )}
@@ -1692,11 +1685,7 @@ const Empty = () => (
 /* ════════════════════════════════════════════════════
    COMMENT DETAIL MODAL
 ════════════════════════════════════════════════════ */
-function CommentDetailModal({ comment, onClose }) {
-    const handleCopy = () => {
-        navigator.clipboard.writeText(comment.text || "");
-        alert("Comment copied!");
-    };
+function CommentDetailModal({ comment, brandNames = [], onClose }) {
 
     return (
         <div
@@ -1747,22 +1736,7 @@ function CommentDetailModal({ comment, onClose }) {
                         <p className="text-sm font-mono text-gray-600">{comment.postId || "N/A"}</p>
                     </div>
 
-                    {/* Full comment */}
-                    <div>
-                        <p className="text-xs font-semibold text-gray-500 uppercase mb-3">Comment</p>
-                        <div className="bg-gray-50 rounded-lg p-4 border border-gray-100">
-                            <p className="text-sm leading-relaxed text-gray-800 whitespace-pre-wrap break-words">
-                                {comment.text || "No text"}
-                            </p>
-                        </div>
-                    </div>
-
-                    {/* Stats */}
-                    <div className="mt-4 pt-4 border-t border-gray-100">
-                        <p className="text-xs text-gray-500">
-                            {comment.text?.length || 0} characters • {comment.text?.split(" ").filter(w => w).length || 0} words
-                        </p>
-                    </div>
+                    <CommentThreadCard comment={comment} brandNames={brandNames} />
                 </div>
 
                 {/* Footer */}
@@ -1772,12 +1746,6 @@ function CommentDetailModal({ comment, onClose }) {
                         className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 text-sm transition-colors"
                     >
                         Close
-                    </button>
-                    <button
-                        onClick={handleCopy}
-                        className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg font-semibold hover:bg-gray-100 text-sm transition-colors"
-                    >
-                        📋 Copy
                     </button>
                 </div>
             </div>

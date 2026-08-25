@@ -274,7 +274,7 @@ exports.getDashboardData = async (pageId, access_token, since = null, until = nu
         params: {
             fields: "name,fan_count,followers_count,instagram_business_account",
             ...commonParams,
-        },
+        }, b
     });
 
     const page = {
