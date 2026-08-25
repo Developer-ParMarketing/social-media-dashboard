@@ -1,36 +1,73 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).
+# Social Media Analytics Dashboard
 
-## Getting Started
+A Next.js dashboard for monitoring social media performance and analytics across Facebook, Instagram, and Ads.
 
-First, run the development server:
+## What’s Implemented
 
+### Frontend
+- **Home page** with a marketing dashboard landing card and navigation to Facebook accounts.
+- **Facebook Accounts page** (`/accounts`)
+  - Lists connected Facebook pages and accounts.
+  - Shows page name, ID, category, and task tags.
+  - Clicking a row opens the account detail page.
+- **Facebook/Instagram Account Detail page** (`/accounts/[id]`)
+  - Displays analytics charts for engagement, reach, content volume, and reel performance.
+  - Uses Chart.js loaded dynamically in the browser.
+- **Instagram Media page** (`/instagram`)
+  - Fetches Instagram media from the backend.
+  - Displays media entries in a reusable table.
+  - Supports viewing detailed media insights in a modal.
+- **Ads Insights page** (`/ads`)
+  - Loads ad performance data from the backend.
+  - Displays insights in a table.
+- **Best Posts page** (`/best-posts`)
+  - Shows top-performing Instagram posts.
+  - Includes media preview, caption summary, likes, comments, shares, saves, reach, engagement rate, and score.
+- Shared UI components:
+  - `Table` for responsive data display.
+  - `Modal` for viewing row-specific details.
+  - `Navbar` and site-wide layout in `app/layout.js`.
+
+### Backend
+- Express server in `backend/index.js`.
+- MongoDB integration via Mongoose.
+- API routes mounted under `/api`:
+  - `/api/ads`
+  - `/api/instagram`
+  - `/api/facebook`
+  - `/api/sync`
+- Backend currently connects to a local MongoDB instance at `mongodb://admin:Parmarketing%404545%23@localhost:27017/social_dashboard?authSource=admin`.
+
+### API Client
+- Frontend uses `services/api.js` to call the backend.
+- Current base URL is configured as `https://social-backend.parmarketing.co.uk/api` with a commented local fallback.
+
+## Run Locally
+
+### Frontend
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
+- App runs on `http://localhost:3000` by default.
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### Backend
+```bash
+cd backend
+npm install
+node index.js
+```
+- Server listens on port `8019`.
 
-You can start editing the page by modifying `app/page.js`. The page auto-updates as you edit the file.
+## Project Structure
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- `app/` - Next.js app router pages and UI.
+- `components/` - Reusable React components like `Table`, `Modal`, `Navbar`, and `Loader`.
+- `services/api.js` - Axios instance for backend API calls.
+- `backend/` - Express API server, routes, controllers, and Mongoose models.
+- `public/` - Static assets.
 
-## Learn More
+## Notes
 
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- The frontend currently expects a backend API that serves Facebook, Instagram, and Ads analytics data.
+- The repo includes both the Next.js frontend and the Express backend, but the backend URL is configurable in `services/api.js`.
