@@ -124,7 +124,7 @@ export default function AccountsPage() {
                                     </div>
 
                                     {/* Tasks */}
-                                    <div className="mb-4">
+                                    {/* <div className="mb-4">
                                         <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold mb-3">
                                             Permissions
                                         </p>
@@ -148,7 +148,7 @@ export default function AccountsPage() {
                                                 </span>
                                             )}
                                         </div>
-                                    </div>
+                                    </div> */}
 
                                     {/* CTA Button */}
                                     <button
