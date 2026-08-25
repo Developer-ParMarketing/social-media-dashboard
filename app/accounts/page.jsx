@@ -88,14 +88,10 @@ export default function AccountsPage() {
                                 className="group bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-xl hover:border-indigo-200 transition-all duration-300 cursor-pointer overflow-hidden"
                             >
                                 {/* Header with gradient */}
-                                <div className="h-24 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 relative overflow-hidden">
-                                    <div className="absolute inset-0 opacity-20">
-                                        <div className="absolute top-2 right-2 text-4xl">📱</div>
-                                    </div>
-                                </div>
+
 
                                 {/* Content */}
-                                <div className="p-6 relative -mt-8">
+                                <div className="p-6 relative mt-4">
                                     {/* Avatar placeholder */}
                                     <div className="w-16 h-16 rounded-xl bg-gradient-to-br from-indigo-400 to-purple-500 flex items-center justify-center text-2xl font-bold text-white mb-4 shadow-md border-4 border-white">
                                         {acc.name.charAt(0).toUpperCase()}
