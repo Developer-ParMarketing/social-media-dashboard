@@ -206,8 +206,6 @@ async function syncComments(pageId, access_token, appsecret_proof, { recentDays 
 // POST /api/sync/:pageId  — fetch from Meta + save to DB
 // ?full=true forces a full comment resync (all content, not just recent)
 // ══════════════════════════════════════════════
-const MIN_SYNC_INTERVAL_MS = 15 * 60 * 1000; // 15 minutes cooldown
-
 router.post("/:pageId", async (req, res) => {
     const { pageId } = req.params;
     const { access_token } = req.body;
@@ -218,22 +216,13 @@ router.post("/:pageId", async (req, res) => {
     }
 
     try {
-        const existingPage = await Page.findOne({ pageId });
-        if (existingPage?.lastSyncStarted) {
-            const elapsed = Date.now() - existingPage.lastSyncStarted.getTime();
-            if (elapsed < MIN_SYNC_INTERVAL_MS) {
-                const waitMin = Math.ceil((MIN_SYNC_INTERVAL_MS - elapsed) / 60000);
-                return res.status(429).json({
-                    error: `Sync ran recently. Please wait ~${waitMin} more minute(s) before syncing again.`,
-                });
-            }
-        }
-
         await Page.findOneAndUpdate(
             { pageId },
             { pageId, lastSyncStarted: new Date(), syncStatus: "processing" },
             { upsert: true }
         );
+
+        console.log(`\n⏳ Sync started in background: ${pageId}${fullResync ? " [FULL RESYNC]" : ""}`);
 
         res.status(202).json({
             success: true,
