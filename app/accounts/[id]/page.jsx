@@ -490,9 +490,11 @@ function QuickInsights({ monthly, metric }) {
 /* ════════════════════════════════════════════════════
    FOLLOWER GROWTH CHART
 ════════════════════════════════════════════════════ */
-function FollowerGrowthChart({ snapshots }) {
+function FollowerGrowthChart({ snapshots, platform = "all" }) {
     const chartRef = useRef(null);
     const chartInstance = useRef(null);
+    const showFB = platform !== "instagram";
+    const showIG = platform !== "facebook";
 
     useEffect(() => {
         const loadChart = async () => {
@@ -516,35 +518,37 @@ function FollowerGrowthChart({ snapshots }) {
                 new Date(s.date).toLocaleDateString("en-IN", { day: "2-digit", month: "short" })
             );
 
+            const datasets = [];
+            if (showFB) {
+                datasets.push({
+                    label: "Facebook",
+                    data: snapshots.map((s) => s.fbFollowers),
+                    borderColor: "#3b82f6",
+                    backgroundColor: "rgba(59,130,246,0.08)",
+                    borderWidth: 2,
+                    pointRadius: 4,
+                    pointHoverRadius: 6,
+                    tension: 0.3,
+                    fill: true,
+                });
+            }
+            if (showIG) {
+                datasets.push({
+                    label: "Instagram",
+                    data: snapshots.map((s) => s.igFollowers),
+                    borderColor: "#d946ef",
+                    backgroundColor: "rgba(217,70,239,0.08)",
+                    borderWidth: 2,
+                    pointRadius: 4,
+                    pointHoverRadius: 6,
+                    tension: 0.3,
+                    fill: true,
+                });
+            }
+
             chartInstance.current = new window.Chart(canvas, {
                 type: "line",
-                data: {
-                    labels,
-                    datasets: [
-                        {
-                            label: "Facebook",
-                            data: snapshots.map((s) => s.fbFollowers),
-                            borderColor: "#3b82f6",
-                            backgroundColor: "rgba(59,130,246,0.08)",
-                            borderWidth: 2,
-                            pointRadius: 4,
-                            pointHoverRadius: 6,
-                            tension: 0.3,
-                            fill: true,
-                        },
-                        {
-                            label: "Instagram",
-                            data: snapshots.map((s) => s.igFollowers),
-                            borderColor: "#d946ef",
-                            backgroundColor: "rgba(217,70,239,0.08)",
-                            borderWidth: 2,
-                            pointRadius: 4,
-                            pointHoverRadius: 6,
-                            tension: 0.3,
-                            fill: true,
-                        },
-                    ],
-                },
+                data: { labels, datasets },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
@@ -579,13 +583,30 @@ function FollowerGrowthChart({ snapshots }) {
         return () => {
             if (chartInstance.current) chartInstance.current.destroy();
         };
-    }, [snapshots]);
+    }, [snapshots, platform, showFB, showIG]);
 
     if (snapshots.length < 2) return null;
 
     return (
         <div style={{ position: "relative", height: 260, width: "100%" }} className="mb-5">
             <canvas ref={chartRef} role="img" aria-label="Follower growth over time" />
+        </div>
+    );
+}
+
+function PlatformFilterButtons({ value, onChange }) {
+    return (
+        <div className="flex gap-1">
+            {["all", "facebook", "instagram"].map((p) => (
+                <button
+                    key={p}
+                    type="button"
+                    onClick={() => onChange(p)}
+                    className={`px-3 py-1.5 rounded-lg text-sm font-medium ${value === p ? "bg-indigo-600 text-white" : "text-gray-500 hover:bg-gray-100 border border-gray-200"}`}
+                >
+                    {p === "all" ? "All" : p === "facebook" ? "Facebook" : "Instagram"}
+                </button>
+            ))}
         </div>
     );
 }
@@ -612,7 +633,9 @@ export default function AccountDetails() {
 
 
     const [filters, setFilters] = useState({ platform: "all", type: "all", since: "", until: "", hasComments: false });
-    const [globalFilters, setGlobalFilters] = useState({ platform: "all", since: "", until: "" });
+    const [followerPlatformFilter, setFollowerPlatformFilter] = useState("all");
+    const [monthlyPlatformFilter, setMonthlyPlatformFilter] = useState("all");
+    const [commentsPlatformFilter, setCommentsPlatformFilter] = useState("all");
     const [contentPage, setContentPage] = useState(1);
     const [content, setContent] = useState({ data: [], pagination: { page: 1, totalPages: 1, total: 0 } });
     const [contentLoading, setContentLoading] = useState(true);
@@ -807,28 +830,14 @@ export default function AccountDetails() {
     }
 
     const { page, summary, instagram, facebook, bestOverall, globalBest, bestByCategory, igBest, monthly, data: allContent } = dashboard;
-    const filteredMonthly = (monthly || []).filter((m) => {
-        if (globalFilters.since && m.month < globalFilters.since.slice(0, 7)) return false;
-        if (globalFilters.until && m.month > globalFilters.until.slice(0, 7)) return false;
-        return true;
-    });
 
-    const showFB = globalFilters.platform !== "instagram";
-    const showIG = globalFilters.platform !== "facebook";
-    const sumFrom = (key, plat) => filteredMonthly.reduce((s, m) => s + (m[plat]?.[key] ?? 0), 0);
-
-    const filteredSummary = {
-        totalLikes: (showFB ? sumFrom("likes", "facebook") : 0) + (showIG ? sumFrom("likes", "instagram") : 0),
-        totalComments: (showFB ? sumFrom("comments", "facebook") : 0) + (showIG ? sumFrom("comments", "instagram") : 0),
-        totalShares: (showFB ? sumFrom("shares", "facebook") : 0) + (showIG ? sumFrom("shares", "instagram") : 0),
-        totalSaves: showIG ? sumFrom("saves", "instagram") : 0,
-        totalViews: (showFB ? sumFrom("views", "facebook") : 0) + (showIG ? sumFrom("views", "instagram") : 0),
-        totalReach: (showFB ? sumFrom("reach", "facebook") : 0) + (showIG ? sumFrom("reach", "instagram") : 0),
-        totalEngagement: (showFB ? sumFrom("engagement", "facebook") : 0) + (showIG ? sumFrom("engagement", "instagram") : 0),
-        facebookContent: showFB ? filteredMonthly.reduce((s, m) => s + (m.facebook?.posts ?? 0) + (m.facebook?.reels ?? 0) + (m.facebook?.videos ?? 0), 0) : 0,
-        instagramContent: showIG ? filteredMonthly.reduce((s, m) => s + (m.instagram?.posts ?? 0) + (m.instagram?.reels ?? 0), 0) : 0,
-    };
-    filteredSummary.totalContent = filteredSummary.facebookContent + filteredSummary.instagramContent;
+    const followerShowFB = followerPlatformFilter !== "instagram";
+    const followerShowIG = followerPlatformFilter !== "facebook";
+    const monthlyShowFB = monthlyPlatformFilter !== "instagram";
+    const monthlyShowIG = monthlyPlatformFilter !== "facebook";
+    const filteredComments = (allComments || []).filter(
+        (c) => commentsPlatformFilter === "all" || c.platform === commentsPlatformFilter
+    );
 
     console.log('summary', summary);
 
@@ -851,14 +860,6 @@ export default function AccountDetails() {
         { label: "⏱ Most watched reel", post: igBest?.mostWatched },
         { label: "🧲 Best retention", post: igBest?.bestRetention },
     ].filter((i) => i.post);
-    const filteredTopContent = topContent.filter((item) => {
-        if (globalFilters.platform !== "all" && item.post.platform !== globalFilters.platform) return false;
-        if (globalFilters.since && item.post.created_time && item.post.created_time.slice(0, 10) < globalFilters.since) return false;
-        if (globalFilters.until && item.post.created_time && item.post.created_time.slice(0, 10) > globalFilters.until) return false;
-        return true;
-    });
-
-    const updateGlobalFilter = (patch) => setGlobalFilters((f) => ({ ...f, ...patch }));
 
     return (
         <div className="min-h-screen bg-[#f5f5f0] font-['DM_Sans',sans-serif]">
@@ -945,32 +946,13 @@ export default function AccountDetails() {
                         />
                     </div>
                 </div>
-                {/* <div className="flex flex-wrap items-center gap-3 bg-white border border-gray-200 rounded-xl p-3">
-                    <span className="text-xs font-bold text-gray-400 uppercase tracking-wide">Page filter:</span>
-                    <div className="flex gap-1">
-                        {["all", "facebook", "instagram"].map((p) => (
-                            <button
-                                key={p}
-                                onClick={() => updateGlobalFilter({ platform: p })}
-                                className={`px-3 py-1.5 rounded-lg text-sm font-medium ${globalFilters.platform === p ? "bg-indigo-600 text-white" : "text-gray-500 hover:bg-gray-100"}`}
-                            >
-                                {p === "all" ? "All Platforms" : p === "facebook" ? "Facebook" : "Instagram"}
-                            </button>
-                        ))}
-                    </div>
-                    <input type="date" value={globalFilters.since} onChange={(e) => updateGlobalFilter({ since: e.target.value })} className="text-sm border border-gray-200 rounded-lg px-2 py-1.5" />
-                    <span className="text-gray-400 text-sm">to</span>
-                    <input type="date" value={globalFilters.until} onChange={(e) => updateGlobalFilter({ until: e.target.value })} className="text-sm border border-gray-200 rounded-lg px-2 py-1.5" />
-                    {(globalFilters.platform !== "all" || globalFilters.since || globalFilters.until) && (
-                        <button onClick={() => setGlobalFilters({ platform: "all", since: "", until: "" })} className="text-xs text-gray-400 underline">
-                            Clear page filter
-                        </button>
-                    )}
-                </div> */}
 
                 {followerHistory && followerHistory.snapshots.length >= 1 && (
                     <div>
-                        <SectionTitle>📈 Follower Growth</SectionTitle>
+                        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+                            <SectionTitle className="mb-0">📈 Follower Growth</SectionTitle>
+                            <PlatformFilterButtons value={followerPlatformFilter} onChange={setFollowerPlatformFilter} />
+                        </div>
 
                         {followerHistory.snapshots.length === 1 ? (
                             <div className="bg-white rounded-xl p-4 border border-gray-100 text-sm text-gray-500">
@@ -978,50 +960,80 @@ export default function AccountDetails() {
                             </div>
                         ) : (
                             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
-                                <div className="grid grid-cols-2 gap-3 mb-5">
-                                    <StatCard
-                                        label="FB Followers Gained"
-                                        value={`${followerHistory.fbGain >= 0 ? "+" : ""}${followerHistory.fbGain}`}
-                                        color={followerHistory.fbGain >= 0 ? "text-emerald-600" : "text-rose-600"}
-                                    />
-                                    <StatCard
-                                        label="IG Followers Gained"
-                                        value={`${followerHistory.igGain >= 0 ? "+" : ""}${followerHistory.igGain}`}
-                                        color={followerHistory.igGain >= 0 ? "text-emerald-600" : "text-rose-600"}
-                                    />
+                                <div className={`grid ${followerShowFB && followerShowIG ? "grid-cols-2" : "grid-cols-1"} gap-3 mb-5`}>
+                                    {followerShowFB && (
+                                        <StatCard
+                                            label="FB Followers Gained"
+                                            value={`${followerHistory.fbGain >= 0 ? "+" : ""}${followerHistory.fbGain}`}
+                                            color={followerHistory.fbGain >= 0 ? "text-emerald-600" : "text-rose-600"}
+                                        />
+                                    )}
+                                    {followerShowIG && (
+                                        <StatCard
+                                            label="IG Followers Gained"
+                                            value={`${followerHistory.igGain >= 0 ? "+" : ""}${followerHistory.igGain}`}
+                                            color={followerHistory.igGain >= 0 ? "text-emerald-600" : "text-rose-600"}
+                                        />
+                                    )}
                                 </div>
 
-                                <FollowerGrowthChart snapshots={followerHistory.snapshots} />
+                                <FollowerGrowthChart snapshots={followerHistory.snapshots} platform={followerPlatformFilter} />
 
                                 <div className="overflow-x-auto max-h-[300px] overflow-y-auto border-t border-gray-100 pt-3">
                                     <table className="w-full text-sm">
                                         <thead className="sticky top-0 bg-white">
                                             <tr>
                                                 <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase">Date</th>
-                                                <th className="px-3 py-2 text-right text-xs font-semibold text-gray-500 uppercase">FB Followers</th>
-                                                <th className="px-3 py-2 text-right text-xs font-semibold text-gray-500 uppercase">FB Change</th>
-                                                <th className="px-3 py-2 text-right text-xs font-semibold text-gray-500 uppercase">IG Followers</th>
-                                                <th className="px-3 py-2 text-right text-xs font-semibold text-gray-500 uppercase">IG Change</th>
+                                                {followerShowFB && (
+                                                    <>
+                                                        <th className="px-3 py-2 text-right text-xs font-semibold text-gray-500 uppercase">FB Followers</th>
+                                                        <th className="px-3 py-2 text-right text-xs font-semibold text-gray-500 uppercase">FB Change</th>
+                                                        <th className="px-3 py-2 text-right text-xs font-semibold text-gray-500 uppercase">FB %</th>
+                                                    </>
+                                                )}
+                                                {followerShowIG && (
+                                                    <>
+                                                        <th className="px-3 py-2 text-right text-xs font-semibold text-gray-500 uppercase">IG Followers</th>
+                                                        <th className="px-3 py-2 text-right text-xs font-semibold text-gray-500 uppercase">IG Change</th>
+                                                        <th className="px-3 py-2 text-right text-xs font-semibold text-gray-500 uppercase">IG %</th>
+                                                    </>
+                                                )}
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-gray-50">
                                             {[...followerHistory.snapshots].reverse().map((s, i, arr) => {
-                                                const prev = arr[i + 1]; // next in reversed array = earlier day
+                                                const prev = arr[i + 1];
                                                 const fbChange = prev ? s.fbFollowers - prev.fbFollowers : null;
                                                 const igChange = prev ? s.igFollowers - prev.igFollowers : null;
+                                                const fbPct = prev && prev.fbFollowers ? ((fbChange / prev.fbFollowers) * 100).toFixed(1) : null;
+                                                const igPct = prev && prev.igFollowers ? ((igChange / prev.igFollowers) * 100).toFixed(1) : null;
                                                 return (
                                                     <tr key={s.date} className="hover:bg-gray-50/60">
                                                         <td className="px-3 py-2 font-medium text-gray-800">
                                                             {new Date(s.date).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}
                                                         </td>
-                                                        <td className="px-3 py-2 text-right text-gray-700">{fmt(s.fbFollowers)}</td>
-                                                        <td className={`px-3 py-2 text-right font-medium ${fbChange > 0 ? "text-emerald-600" : fbChange < 0 ? "text-rose-600" : "text-gray-400"}`}>
-                                                            {fbChange === null ? "—" : `${fbChange >= 0 ? "+" : ""}${fbChange}`}
-                                                        </td>
-                                                        <td className="px-3 py-2 text-right text-gray-700">{fmt(s.igFollowers)}</td>
-                                                        <td className={`px-3 py-2 text-right font-medium ${igChange > 0 ? "text-emerald-600" : igChange < 0 ? "text-rose-600" : "text-gray-400"}`}>
-                                                            {igChange === null ? "—" : `${igChange >= 0 ? "+" : ""}${igChange}`}
-                                                        </td>
+                                                        {followerShowFB && (
+                                                            <>
+                                                                <td className="px-3 py-2 text-right text-gray-700">{fmt(s.fbFollowers)}</td>
+                                                                <td className={`px-3 py-2 text-right font-medium ${fbChange > 0 ? "text-emerald-600" : fbChange < 0 ? "text-rose-600" : "text-gray-400"}`}>
+                                                                    {fbChange === null ? "—" : `${fbChange >= 0 ? "+" : ""}${fbChange}`}
+                                                                </td>
+                                                                <td className={`px-3 py-2 text-right font-medium ${fbChange > 0 ? "text-emerald-600" : fbChange < 0 ? "text-rose-600" : "text-gray-400"}`}>
+                                                                    {fbPct === null ? "—" : `${fbChange >= 0 ? "+" : ""}${fbPct}%`}
+                                                                </td>
+                                                            </>
+                                                        )}
+                                                        {followerShowIG && (
+                                                            <>
+                                                                <td className="px-3 py-2 text-right text-gray-700">{fmt(s.igFollowers)}</td>
+                                                                <td className={`px-3 py-2 text-right font-medium ${igChange > 0 ? "text-emerald-600" : igChange < 0 ? "text-rose-600" : "text-gray-400"}`}>
+                                                                    {igChange === null ? "—" : `${igChange >= 0 ? "+" : ""}${igChange}`}
+                                                                </td>
+                                                                <td className={`px-3 py-2 text-right font-medium ${igChange > 0 ? "text-emerald-600" : igChange < 0 ? "text-rose-600" : "text-gray-400"}`}>
+                                                                    {igPct === null ? "—" : `${igChange >= 0 ? "+" : ""}${igPct}%`}
+                                                                </td>
+                                                            </>
+                                                        )}
                                                     </tr>
                                                 );
                                             })}
@@ -1037,109 +1049,137 @@ export default function AccountDetails() {
                 <div>
                     <SectionTitle>📊 Overall Performance</SectionTitle>
                     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-                        <StatCard label="Likes" value={fmt(filteredSummary.totalLikes)} color="text-rose-600" />
-                        <StatCard label="Comments" value={fmt(filteredSummary.totalComments)} color="text-indigo-600" />
-                        <StatCard label="Shares" value={fmt(filteredSummary.totalShares)} color="text-sky-600" />
-                        <StatCard label="Saves" value={fmt(filteredSummary.totalSaves)} color="text-emerald-600" />
-                        <StatCard label="Total Reach" value={fmt(filteredSummary.totalReach)} color="text-violet-600" />
-                        <StatCard label="Total Views" value={fmt(filteredSummary.totalViews)} color="text-orange-600" />
-                        <StatCard label="Engagement" value={fmt(filteredSummary.totalEngagement)} color="text-pink-600" />
-                        <StatCard label="FB Content" value={fmt(filteredSummary.facebookContent)} color="text-blue-600" />
-                        <StatCard label="IG Content" value={fmt(filteredSummary.instagramContent)} color="text-fuchsia-600" />
+                        <StatCard label="Likes" value={fmt(summary?.totalLikes)} color="text-rose-600" />
+                        <StatCard label="Comments" value={fmt(summary?.totalComments)} color="text-indigo-600" />
+                        <StatCard label="Shares" value={fmt(summary?.totalShares)} color="text-sky-600" />
+                        <StatCard label="Saves" value={fmt(summary?.totalSaves)} color="text-emerald-600" />
+                        <StatCard label="Total Reach" value={fmt(summary?.totalReach)} color="text-violet-600" />
+                        <StatCard label="Total Views" value={fmt(summary?.totalViews)} color="text-orange-600" />
+                        <StatCard label="Engagement" value={fmt(summary?.totalEngagement)} color="text-pink-600" />
+                        <StatCard label="FB Content" value={fmt(summary?.facebookContent)} color="text-blue-600" />
+                        <StatCard label="IG Content" value={fmt(summary?.instagramContent)} color="text-fuchsia-600" />
 
                     </div>
                 </div>
 
                 {/* ── MONTHLY TABLE ── */}
                 <div>
-                    <SectionTitle>📅 Monthly Breakdown</SectionTitle>
+                    <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+                        <SectionTitle className="mb-0">📅 Monthly Breakdown</SectionTitle>
+                        <PlatformFilterButtons value={monthlyPlatformFilter} onChange={setMonthlyPlatformFilter} />
+                    </div>
                     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
                         <div className="overflow-x-auto max-h-[420px] overflow-y-auto">
-                            <table className="w-full text-sm min-w-[1500px]">
+                            <table className="w-full text-sm min-w-[600px]">
                                 <thead className="sticky top-0 bg-gray-50 border-b border-gray-200 z-10">
                                     <tr>
-                                        {["Month", "FB Posts", "FB Reels", "FB Videos", "FB Likes", "FB Comments", "FB Shares", "FB Views", "FB Reach", "FB Engagement", "FB Followers", "FB Follower %", "IG Posts", "IG Reels", "IG Likes", "IG Comments", "IG Shares", "IG Views", "IG Reach", "IG Saves", "IG Watch Time", "IG Engagement", "IG Followers", "IG Follower %", "Total Engagement"].map((h, i) => (
-                                            <th key={h} className={`px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap ${i === 0 ? "text-left" : "text-right"}`}>{h}</th>
+                                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">Month</th>
+                                        {monthlyShowFB && ["FB Posts", "FB Reels", "FB Videos", "FB Likes", "FB Comments", "FB Shares", "FB Views", "FB Reach", "FB Engagement", "FB Followers", "FB Follower %"].map((h) => (
+                                            <th key={h} className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">{h}</th>
                                         ))}
+                                        {monthlyShowIG && ["IG Posts", "IG Reels", "IG Likes", "IG Comments", "IG Shares", "IG Views", "IG Reach", "IG Saves", "IG Watch Time", "IG Engagement", "IG Followers", "IG Follower %"].map((h) => (
+                                            <th key={h} className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">{h}</th>
+                                        ))}
+                                        <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">Total Engagement</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-gray-50">
                                     {[...(monthly || [])].reverse().map((m, i) => (
                                         <tr key={i} className="hover:bg-gray-50/60 transition-colors">
                                             <td className="px-4 py-3 font-semibold text-gray-800 whitespace-nowrap">{m.month}</td>
-                                            <td className="px-4 py-3 text-right text-gray-700">{m.facebook?.posts ?? 0}</td>
-                                            <td className="px-4 py-3 text-right text-gray-700">{m.facebook?.reels ?? 0}</td>
-                                            <td className="px-4 py-3 text-right text-gray-700">{m.facebook?.videos ?? 0}</td>
-                                            <td className="px-4 py-3 text-right text-gray-700">{fmt(m.facebook?.likes)}</td>
-                                            <td className="px-4 py-3 text-right text-gray-700">{fmt(m.facebook?.comments)}</td>
-                                            <td className="px-4 py-3 text-right text-gray-700">{fmt(m.facebook?.shares)}</td>
-                                            <td className="px-4 py-3 text-right text-gray-700">{fmt(m.facebook?.views)}</td>
-                                            <td className="px-4 py-3 text-right text-gray-700">{fmt(m.facebook?.reach)}</td>
-                                            <td className="px-4 py-3 text-right font-medium text-blue-600">{fmt(m.facebook?.engagement)}</td>
-
-                                            <td className="px-4 py-3 text-right text-gray-500">
-                                                {monthlyFollowerMap[m.month]?.fbFollowers != null ? fmt(monthlyFollowerMap[m.month].fbFollowers) : "—"}
-                                            </td>
-                                            <td className={`px-4 py-3 text-right font-medium ${monthlyFollowerMap[m.month]?.fbGain > 0 ? "text-emerald-600" : monthlyFollowerMap[m.month]?.fbGain < 0 ? "text-rose-600" : "text-gray-400"}`}>
-                                                {monthlyFollowerMap[m.month] ? `${monthlyFollowerMap[m.month].fbGain >= 0 ? "+" : ""}${monthlyFollowerMap[m.month].fbPct}%` : "—"}
-                                            </td>
-                                            <td className="px-4 py-3 text-right text-gray-700">{m.instagram?.posts ?? 0}</td>
-                                            <td className="px-4 py-3 text-right text-gray-700">{m.instagram?.reels ?? 0}</td>
-                                            <td className="px-4 py-3 text-right text-gray-700">{fmt(m.instagram?.likes)}</td>
-                                            <td className="px-4 py-3 text-right text-gray-700">{fmt(m.instagram?.comments)}</td>
-                                            <td className="px-4 py-3 text-right text-gray-700">{fmt(m.instagram?.shares)}</td>
-                                            <td className="px-4 py-3 text-right text-gray-700">{fmt(m.instagram?.views)}</td>
-                                            <td className="px-4 py-3 text-right text-gray-700">{fmt(m.instagram?.reach)}</td>
-                                            <td className="px-4 py-3 text-right text-gray-700">{fmt(m.instagram?.saves)}</td>
-                                            <td className="px-4 py-3 text-right text-gray-700">
-                                                {m.instagram?.totalWatchTimeSec > 0 ? fmtHMS(m.instagram.totalWatchTimeSec) : "—"}
-                                            </td>
-                                            <td className="px-4 py-3 text-right font-medium text-fuchsia-600">{fmt(m.instagram?.engagement)}</td>
-                                            {/* after IG Engagement td */}
-                                            <td className="px-4 py-3 text-right text-gray-500">
-                                                {monthlyFollowerMap[m.month]?.igFollowers != null ? fmt(monthlyFollowerMap[m.month].igFollowers) : "—"}
-                                            </td>
-                                            <td className={`px-4 py-3 text-right font-medium ${monthlyFollowerMap[m.month]?.igGain > 0 ? "text-emerald-600" : monthlyFollowerMap[m.month]?.igGain < 0 ? "text-rose-600" : "text-gray-400"}`}>
-                                                {monthlyFollowerMap[m.month] ? `${monthlyFollowerMap[m.month].igGain >= 0 ? "+" : ""}${monthlyFollowerMap[m.month].igPct}%` : "—"}
-                                            </td>
+                                            {monthlyShowFB && (
+                                                <>
+                                                    <td className="px-4 py-3 text-right text-gray-700">{m.facebook?.posts ?? 0}</td>
+                                                    <td className="px-4 py-3 text-right text-gray-700">{m.facebook?.reels ?? 0}</td>
+                                                    <td className="px-4 py-3 text-right text-gray-700">{m.facebook?.videos ?? 0}</td>
+                                                    <td className="px-4 py-3 text-right text-gray-700">{fmt(m.facebook?.likes)}</td>
+                                                    <td className="px-4 py-3 text-right text-gray-700">{fmt(m.facebook?.comments)}</td>
+                                                    <td className="px-4 py-3 text-right text-gray-700">{fmt(m.facebook?.shares)}</td>
+                                                    <td className="px-4 py-3 text-right text-gray-700">{fmt(m.facebook?.views)}</td>
+                                                    <td className="px-4 py-3 text-right text-gray-700">{fmt(m.facebook?.reach)}</td>
+                                                    <td className="px-4 py-3 text-right font-medium text-blue-600">{fmt(m.facebook?.engagement)}</td>
+                                                    <td className="px-4 py-3 text-right text-gray-500">
+                                                        {monthlyFollowerMap[m.month]?.fbFollowers != null ? fmt(monthlyFollowerMap[m.month].fbFollowers) : "—"}
+                                                    </td>
+                                                    <td className={`px-4 py-3 text-right font-medium ${monthlyFollowerMap[m.month]?.fbGain > 0 ? "text-emerald-600" : monthlyFollowerMap[m.month]?.fbGain < 0 ? "text-rose-600" : "text-gray-400"}`}>
+                                                        {monthlyFollowerMap[m.month] ? `${monthlyFollowerMap[m.month].fbGain >= 0 ? "+" : ""}${monthlyFollowerMap[m.month].fbPct}%` : "—"}
+                                                    </td>
+                                                </>
+                                            )}
+                                            {monthlyShowIG && (
+                                                <>
+                                                    <td className="px-4 py-3 text-right text-gray-700">{m.instagram?.posts ?? 0}</td>
+                                                    <td className="px-4 py-3 text-right text-gray-700">{m.instagram?.reels ?? 0}</td>
+                                                    <td className="px-4 py-3 text-right text-gray-700">{fmt(m.instagram?.likes)}</td>
+                                                    <td className="px-4 py-3 text-right text-gray-700">{fmt(m.instagram?.comments)}</td>
+                                                    <td className="px-4 py-3 text-right text-gray-700">{fmt(m.instagram?.shares)}</td>
+                                                    <td className="px-4 py-3 text-right text-gray-700">{fmt(m.instagram?.views)}</td>
+                                                    <td className="px-4 py-3 text-right text-gray-700">{fmt(m.instagram?.reach)}</td>
+                                                    <td className="px-4 py-3 text-right text-gray-700">{fmt(m.instagram?.saves)}</td>
+                                                    <td className="px-4 py-3 text-right text-gray-700">
+                                                        {m.instagram?.totalWatchTimeSec > 0 ? fmtHMS(m.instagram.totalWatchTimeSec) : "—"}
+                                                    </td>
+                                                    <td className="px-4 py-3 text-right font-medium text-fuchsia-600">{fmt(m.instagram?.engagement)}</td>
+                                                    <td className="px-4 py-3 text-right text-gray-500">
+                                                        {monthlyFollowerMap[m.month]?.igFollowers != null ? fmt(monthlyFollowerMap[m.month].igFollowers) : "—"}
+                                                    </td>
+                                                    <td className={`px-4 py-3 text-right font-medium ${monthlyFollowerMap[m.month]?.igGain > 0 ? "text-emerald-600" : monthlyFollowerMap[m.month]?.igGain < 0 ? "text-rose-600" : "text-gray-400"}`}>
+                                                        {monthlyFollowerMap[m.month] ? `${monthlyFollowerMap[m.month].igGain >= 0 ? "+" : ""}${monthlyFollowerMap[m.month].igPct}%` : "—"}
+                                                    </td>
+                                                </>
+                                            )}
                                             <td className="px-4 py-3 text-right font-bold text-indigo-600">
-                                                {fmt((m.facebook?.engagement ?? 0) + (m.instagram?.engagement ?? 0))}
+                                                {fmt(
+                                                    (monthlyShowFB ? (m.facebook?.engagement ?? 0) : 0) +
+                                                    (monthlyShowIG ? (m.instagram?.engagement ?? 0) : 0)
+                                                )}
                                             </td>
                                         </tr>
                                     ))}
                                     <tr className="bg-gray-50 font-bold border-t-2 border-gray-200">
                                         <td className="px-4 py-3 text-gray-800">Total</td>
-                                        <td className="px-4 py-3 text-right">{(monthly || []).reduce((s, m) => s + (m.facebook?.posts ?? 0), 0)}</td>
-                                        <td className="px-4 py-3 text-right">{(monthly || []).reduce((s, m) => s + (m.facebook?.reels ?? 0), 0)}</td>
-                                        <td className="px-4 py-3 text-right">{(monthly || []).reduce((s, m) => s + (m.facebook?.videos ?? 0), 0)}</td>
-                                        <td className="px-4 py-3 text-right">{fmt((monthly || []).reduce((s, m) => s + (m.facebook?.likes ?? 0), 0))}</td>
-                                        <td className="px-4 py-3 text-right">{fmt((monthly || []).reduce((s, m) => s + (m.facebook?.comments ?? 0), 0))}</td>
-                                        <td className="px-4 py-3 text-right">{fmt((monthly || []).reduce((s, m) => s + (m.facebook?.shares ?? 0), 0))}</td>
-                                        <td className="px-4 py-3 text-right">{fmt((monthly || []).reduce((s, m) => s + (m.facebook?.views ?? 0), 0))}</td>
-                                        <td className="px-4 py-3 text-right">{fmt((monthly || []).reduce((s, m) => s + (m.facebook?.reach ?? 0), 0))}</td>
-                                        <td className="px-4 py-3 text-right text-blue-600">{fmt((monthly || []).reduce((s, m) => s + (m.facebook?.engagement ?? 0), 0))}</td>
-                                        <td className="px-4 py-3 text-right text-gray-500">
-                                            {followerHistory?.fbCurrent != null ? fmt(followerHistory.fbCurrent) : "—"}
-                                        </td>
-                                        <td className="px-4 py-3 text-right text-gray-400">—</td>
-                                        <td className="px-4 py-3 text-right">{(monthly || []).reduce((s, m) => s + (m.instagram?.posts ?? 0), 0)}</td>
-                                        <td className="px-4 py-3 text-right">{(monthly || []).reduce((s, m) => s + (m.instagram?.reels ?? 0), 0)}</td>
-                                        <td className="px-4 py-3 text-right">{fmt((monthly || []).reduce((s, m) => s + (m.instagram?.likes ?? 0), 0))}</td>
-                                        <td className="px-4 py-3 text-right">{fmt((monthly || []).reduce((s, m) => s + (m.instagram?.comments ?? 0), 0))}</td>
-                                        <td className="px-4 py-3 text-right">{fmt((monthly || []).reduce((s, m) => s + (m.instagram?.shares ?? 0), 0))}</td>
-                                        <td className="px-4 py-3 text-right">{fmt((monthly || []).reduce((s, m) => s + (m.instagram?.views ?? 0), 0))}</td>
-                                        <td className="px-4 py-3 text-right">{fmt((monthly || []).reduce((s, m) => s + (m.instagram?.reach ?? 0), 0))}</td>
-                                        <td className="px-4 py-3 text-right">{fmt((monthly || []).reduce((s, m) => s + (m.instagram?.saves ?? 0), 0))}</td>
-                                        <td className="px-4 py-3 text-right">
-                                            {fmtHMS((monthly || []).reduce((s, m) => s + (m.instagram?.totalWatchTimeSec ?? 0), 0))}
-                                        </td>
-                                        <td className="px-4 py-3 text-right text-fuchsia-600">{fmt((monthly || []).reduce((s, m) => s + (m.instagram?.engagement ?? 0), 0))}</td>
-                                        <td className="px-4 py-3 text-right text-gray-500">
-                                            {followerHistory?.igCurrent != null ? fmt(followerHistory.igCurrent) : "—"}
-                                        </td>
-                                        <td className="px-4 py-3 text-right text-gray-400">—</td>
+                                        {monthlyShowFB && (
+                                            <>
+                                                <td className="px-4 py-3 text-right">{(monthly || []).reduce((s, m) => s + (m.facebook?.posts ?? 0), 0)}</td>
+                                                <td className="px-4 py-3 text-right">{(monthly || []).reduce((s, m) => s + (m.facebook?.reels ?? 0), 0)}</td>
+                                                <td className="px-4 py-3 text-right">{(monthly || []).reduce((s, m) => s + (m.facebook?.videos ?? 0), 0)}</td>
+                                                <td className="px-4 py-3 text-right">{fmt((monthly || []).reduce((s, m) => s + (m.facebook?.likes ?? 0), 0))}</td>
+                                                <td className="px-4 py-3 text-right">{fmt((monthly || []).reduce((s, m) => s + (m.facebook?.comments ?? 0), 0))}</td>
+                                                <td className="px-4 py-3 text-right">{fmt((monthly || []).reduce((s, m) => s + (m.facebook?.shares ?? 0), 0))}</td>
+                                                <td className="px-4 py-3 text-right">{fmt((monthly || []).reduce((s, m) => s + (m.facebook?.views ?? 0), 0))}</td>
+                                                <td className="px-4 py-3 text-right">{fmt((monthly || []).reduce((s, m) => s + (m.facebook?.reach ?? 0), 0))}</td>
+                                                <td className="px-4 py-3 text-right text-blue-600">{fmt((monthly || []).reduce((s, m) => s + (m.facebook?.engagement ?? 0), 0))}</td>
+                                                <td className="px-4 py-3 text-right text-gray-500">
+                                                    {followerHistory?.fbCurrent != null ? fmt(followerHistory.fbCurrent) : "—"}
+                                                </td>
+                                                <td className="px-4 py-3 text-right text-gray-400">—</td>
+                                            </>
+                                        )}
+                                        {monthlyShowIG && (
+                                            <>
+                                                <td className="px-4 py-3 text-right">{(monthly || []).reduce((s, m) => s + (m.instagram?.posts ?? 0), 0)}</td>
+                                                <td className="px-4 py-3 text-right">{(monthly || []).reduce((s, m) => s + (m.instagram?.reels ?? 0), 0)}</td>
+                                                <td className="px-4 py-3 text-right">{fmt((monthly || []).reduce((s, m) => s + (m.instagram?.likes ?? 0), 0))}</td>
+                                                <td className="px-4 py-3 text-right">{fmt((monthly || []).reduce((s, m) => s + (m.instagram?.comments ?? 0), 0))}</td>
+                                                <td className="px-4 py-3 text-right">{fmt((monthly || []).reduce((s, m) => s + (m.instagram?.shares ?? 0), 0))}</td>
+                                                <td className="px-4 py-3 text-right">{fmt((monthly || []).reduce((s, m) => s + (m.instagram?.views ?? 0), 0))}</td>
+                                                <td className="px-4 py-3 text-right">{fmt((monthly || []).reduce((s, m) => s + (m.instagram?.reach ?? 0), 0))}</td>
+                                                <td className="px-4 py-3 text-right">{fmt((monthly || []).reduce((s, m) => s + (m.instagram?.saves ?? 0), 0))}</td>
+                                                <td className="px-4 py-3 text-right">
+                                                    {fmtHMS((monthly || []).reduce((s, m) => s + (m.instagram?.totalWatchTimeSec ?? 0), 0))}
+                                                </td>
+                                                <td className="px-4 py-3 text-right text-fuchsia-600">{fmt((monthly || []).reduce((s, m) => s + (m.instagram?.engagement ?? 0), 0))}</td>
+                                                <td className="px-4 py-3 text-right text-gray-500">
+                                                    {followerHistory?.igCurrent != null ? fmt(followerHistory.igCurrent) : "—"}
+                                                </td>
+                                                <td className="px-4 py-3 text-right text-gray-400">—</td>
+                                            </>
+                                        )}
                                         <td className="px-4 py-3 text-right text-indigo-600">
-                                            {fmt((monthly || []).reduce((s, m) => s + (m.facebook?.engagement ?? 0) + (m.instagram?.engagement ?? 0), 0))}
+                                            {fmt(
+                                                (monthlyShowFB ? (monthly || []).reduce((s, m) => s + (m.facebook?.engagement ?? 0), 0) : 0) +
+                                                (monthlyShowIG ? (monthly || []).reduce((s, m) => s + (m.instagram?.engagement ?? 0), 0) : 0)
+                                            )}
                                         </td>
                                     </tr>
                                 </tbody>
@@ -1162,14 +1202,14 @@ export default function AccountDetails() {
                 )}
 
                 {/* ── ANALYTICS CHARTS ── */}
-                <AnalyticsCharts monthly={filteredMonthly} />
+                <AnalyticsCharts monthly={monthly || []} />
 
                 {/* ── TOP PERFORMING ── */}
-                {filteredTopContent.length > 0 && (
+                {topContent.length > 0 && (
                     <div>
                         <SectionTitle>🏆 Top Performing Content</SectionTitle>
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
-                            {filteredTopContent.map((item, i) => (
+                            {topContent.map((item, i) => (
                                 <PostCard key={i} post={item.post} label={item.label} onClick={setSelectedPost} />
                             ))}
                         </div>
@@ -1313,21 +1353,22 @@ export default function AccountDetails() {
                 {/* ── COMMENTS TABLE ── */}
                 {/* ── COMMENTS SECTION ── */}
                 <div>
-                    <div className="mb-4">
-                        <h3 className="text-lg font-bold text-gray-800">💬 Comments ({allComments?.length || 0})</h3>
+                    <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+                        <h3 className="text-lg font-bold text-gray-800">💬 Comments ({filteredComments.length})</h3>
+                        <PlatformFilterButtons value={commentsPlatformFilter} onChange={setCommentsPlatformFilter} />
                     </div>
 
                     {loadingComments ? (
                         <div className="bg-white rounded-xl p-8 text-center text-gray-400 text-sm border border-gray-100">
                             Loading comments…
                         </div>
-                    ) : !allComments || allComments.length === 0 ? (
+                    ) : filteredComments.length === 0 ? (
                         <div className="bg-white rounded-xl p-8 text-center text-gray-400 text-sm border border-gray-100">
                             No comments found
                         </div>
                     ) : (
                         <div className="space-y-3 max-h-[600px] overflow-y-auto">
-                            {allComments.map((c, i) => {
+                            {filteredComments.map((c, i) => {
                                 const platformColors = {
                                     facebook: "bg-blue-50 border-blue-200 text-blue-900",
                                     instagram: "bg-pink-50 border-pink-200 text-pink-900"
@@ -1368,9 +1409,9 @@ export default function AccountDetails() {
                 </div>
 
                 {/* ── COMMENT MODAL ── */}
-                {expandedComment !== null && allComments && allComments[expandedComment] && (
+                {expandedComment !== null && filteredComments[expandedComment] && (
                     <CommentDetailModal
-                        comment={allComments[expandedComment]}
+                        comment={filteredComments[expandedComment]}
                         brandNames={[page.name, instagram?.profile?.username].filter(Boolean)}
                         onClose={() => setExpandedComment(null)}
                     />
