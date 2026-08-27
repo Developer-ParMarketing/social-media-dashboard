@@ -33,6 +33,7 @@ function Badge({ children, style }) {
 
 /** Inline comment with analysis, team reply vs guidebook suggestion */
 export default function CommentThreadCard({ comment, brandNames = [], compact = false, onUpdated }) {
+    const [commentView, setCommentView] = useState(comment);
     const [replyText, setReplyText] = useState(
         comment.reply?.finalReply || comment.reply?.suggestedReply || ""
     );
@@ -40,9 +41,13 @@ export default function CommentThreadCard({ comment, brandNames = [], compact = 
     const [addingExample, setAddingExample] = useState(false);
     const [expanded, setExpanded] = useState(!compact || pageReplyNeedsReview(comment, brandNames));
 
-    const a = comment.analysis || {};
+    useEffect(() => {
+        setCommentView(comment);
+    }, [comment]);
+
+    const a = commentView.analysis || {};
     const insight = getMatchInsight(a);
-    const r = comment.reply || {};
+    const r = commentView.reply || {};
     const reviewLocked = isReplyReviewLocked(r);
     const flagged = isFlaggedComment(a);
     const csReply = needsCustomerServiceReply(a);
@@ -50,21 +55,21 @@ export default function CommentThreadCard({ comment, brandNames = [], compact = 
     const suggestedLabel = getSuggestedReplyLabel(a);
     const abuse = isAbuseComment(a);
     const spam = isSpamComment(a);
-    const pageReply = getPageReplyText(comment, brandNames);
-    const needsReview = pageReplyNeedsReview(comment, brandNames);
-    const allPageReplies = extractPageReplies(comment, brandNames);
+    const pageReply = getPageReplyText(commentView, brandNames);
+    const needsReview = pageReplyNeedsReview(commentView, brandNames);
+    const allPageReplies = extractPageReplies(commentView, brandNames);
 
     useEffect(() => {
-        setReplyText(comment.reply?.finalReply || comment.reply?.suggestedReply || "");
+        setReplyText(commentView.reply?.finalReply || commentView.reply?.suggestedReply || "");
     }, [
-        comment._id,
-        comment.reply?.finalReply,
-        comment.reply?.suggestedReply,
-        comment.reply?.status,
+        commentView._id,
+        commentView.reply?.finalReply,
+        commentView.reply?.suggestedReply,
+        commentView.reply?.status,
     ]);
 
     const handleAddToGuidebook = async () => {
-        if (!comment._id) return;
+        if (!commentView._id) return;
         const category = getPrimaryCategory(a);
         if (!category) {
             alert("No category on this comment — refresh analysis first.");
@@ -72,7 +77,7 @@ export default function CommentThreadCard({ comment, brandNames = [], compact = 
         }
         setAddingExample(true);
         try {
-            const res = await API.post(`/comments/item/${comment._id}/add-to-guidebook`, { category });
+            const res = await API.post(`/comments/item/${commentView._id}/add-to-guidebook`, { category });
             const { wasNew, exampleCount, category: savedCategory } = res.data.data || {};
             const label = CATEGORY_LABELS[savedCategory] || savedCategory;
             if (wasNew) {
@@ -88,10 +93,10 @@ export default function CommentThreadCard({ comment, brandNames = [], compact = 
     };
 
     const handleAction = async (action) => {
-        if (!comment._id || reviewLocked) return;
+        if (!commentView._id || reviewLocked) return;
         setSaving(true);
         try {
-            const res = await API.patch(`/comments/item/${comment._id}/review`, {
+            const res = await API.patch(`/comments/item/${commentView._id}/review`, {
                 action,
                 finalReply: replyText,
                 reviewedBy: "admin",
@@ -106,7 +111,10 @@ export default function CommentThreadCard({ comment, brandNames = [], compact = 
             } else if (res.data?.reanalysisScheduled) {
                 alert("Suggestions for this account will refresh shortly.");
             }
-            onUpdated?.();
+            if (res.data?.data) {
+                setCommentView(res.data.data);
+            }
+            onUpdated?.(res.data?.data);
         } catch (err) {
             alert(err.response?.data?.error || err.message);
         } finally {
@@ -119,7 +127,7 @@ export default function CommentThreadCard({ comment, brandNames = [], compact = 
             <div className="flex items-start justify-between gap-2 mb-2">
                 <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="text-sm font-semibold text-gray-900">{comment.username || "Anonymous"}</span>
+                        <span className="text-sm font-semibold text-gray-900">{commentView.username || "Anonymous"}</span>
                         {flagged && (
                             <Badge style={getFlaggedBadgeStyle(a)}>
                                 {getFlaggedLabel(a)}
@@ -146,7 +154,7 @@ export default function CommentThreadCard({ comment, brandNames = [], compact = 
                         )}
                     </div>
                     <p className="text-[10px] text-gray-400 mt-0.5">
-                        {comment.timestamp ? new Date(comment.timestamp).toLocaleString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : ""}
+                        {commentView.timestamp ? new Date(commentView.timestamp).toLocaleString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : ""}
                         {r.status && (
                             <>
                                 {" · "}
@@ -162,7 +170,7 @@ export default function CommentThreadCard({ comment, brandNames = [], compact = 
                 )}
             </div>
 
-            <p className="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap break-words">{comment.text || "—"}</p>
+            <p className="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap break-words">{commentView.text || "—"}</p>
 
             {compact && pageReply && !expanded && (
                 <p className={`mt-2 text-xs leading-relaxed line-clamp-2 ${needsReview ? "text-amber-800 bg-amber-50 rounded-lg px-2 py-1 border border-amber-100" : "text-emerald-700"}`}>
@@ -284,7 +292,7 @@ export default function CommentThreadCard({ comment, brandNames = [], compact = 
                         </p>
                     )}
 
-                    {comment._id && comment.text?.trim() && getPrimaryCategory(a) && (
+                    {commentView._id && commentView.text?.trim() && getPrimaryCategory(a) && (
                         <button
                             type="button"
                             disabled={addingExample}
@@ -318,7 +326,7 @@ export default function CommentThreadCard({ comment, brandNames = [], compact = 
                         </div>
                     )}
 
-                    {comment._id && flagged && !reviewLocked && (
+                    {commentView._id && flagged && !reviewLocked && (
                         <div className="flex flex-wrap gap-2">
                             {csReply && replyText.trim() && (
                                 <>

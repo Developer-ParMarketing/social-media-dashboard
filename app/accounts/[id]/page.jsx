@@ -720,6 +720,26 @@ export default function AccountDetails() {
         setFilters((f) => ({ ...f, ...patch }));
     };
 
+    const handlePostCommentReviewed = (updatedComment) => {
+        if (!updatedComment?._id || !selectedPost) return;
+        const postKey = selectedPost.id || selectedPost.contentId;
+        const mergeComment = (comments) =>
+            (comments || []).map((c) => (c._id === updatedComment._id ? updatedComment : c));
+
+        setSelectedPost((prev) => {
+            if (!prev?.postComments) return prev;
+            return { ...prev, postComments: mergeComment(prev.postComments) };
+        });
+        setContent((prev) => ({
+            ...prev,
+            data: prev.data.map((p) => {
+                const key = p.id || p.contentId;
+                if (key !== postKey || !p.postComments) return p;
+                return { ...p, postComments: mergeComment(p.postComments) };
+            }),
+        }));
+    };
+
     useEffect(() => {
         if (!id) return;
         (async () => {
@@ -1423,6 +1443,7 @@ export default function AccountDetails() {
                     post={selectedPost}
                     brandNames={[page.name, instagram?.profile?.username].filter(Boolean)}
                     onClose={() => setSelectedPost(null)}
+                    onCommentReviewed={handlePostCommentReviewed}
                 />
             )}
         </div>
@@ -1513,7 +1534,7 @@ function PostCard({ post, label, onClick }) {
 /* ════════════════════════════════════════════════════
    POST MODAL
 ════════════════════════════════════════════════════ */
-function PostModal({ post, brandNames = [], onClose }) {
+function PostModal({ post, brandNames = [], onClose, onCommentReviewed }) {
     const isVideo = ["reel", "video"].includes(post.type);
     const pc = PLATFORM_COLORS[post.platform] || PLATFORM_COLORS.facebook;
     const tc = TYPE_COLORS[post.type] || TYPE_COLORS.post;
@@ -1633,7 +1654,12 @@ function PostModal({ post, brandNames = [], onClose }) {
                         ) : (
                             <div className="space-y-2 max-h-64 overflow-y-auto">
                                 {post.postComments.map((c, i) => (
-                                    <CommentThreadCard key={c._id || i} comment={c} brandNames={brandNames} />
+                                    <CommentThreadCard
+                                        key={c._id || i}
+                                        comment={c}
+                                        brandNames={brandNames}
+                                        onUpdated={onCommentReviewed}
+                                    />
                                 ))}
                             </div>
                         )}
